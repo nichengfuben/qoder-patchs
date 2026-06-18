@@ -186,7 +186,7 @@ def get_console(theme: bool = True) -> Console:
 
 ### Windows UTF-8 Handling / Windows UTF-8 处理
 
-On Chinese Windows, the console uses GBK encoding (cp936), which cannot encode many Unicode symbols. The `_get_utf8_stdout()` helper wraps `sys.stdout.buffer` in a UTF-8 `TextIOWrapper` with `errors="replace"`, ensuring symbols like `ℹ`, `✔`, `✘`, `⚠` render correctly.
+On Chinese Windows, the console uses GBK encoding (cp936), which cannot encode many Unicode symbols. The `_get_utf8_stdout()` helper wraps `sys.stdout.buffer` in a UTF-8 `TextIOWrapper` with `errors="replace"`, ensuring symbols like `[i]`, `[OK]`, `[FAIL]`, `[!]` render correctly.
 
 Additionally, `force_terminal=True` disables Rich's legacy Windows rendering, forcing it to emit ANSI escape codes directly.
 
@@ -211,8 +211,6 @@ CHAR_MAP = {
     # - Arrows: → ← ↑ ↓
     # - Math: ∑ ∆ √ ≤ ≥ ≠ ≈ ∴ ∵ ∈ ∉ ⊂ ⊃ ∪ ∩ ∞
     # - Greek: α β γ δ π Σ Ω
-    # - Faces: ☺ ☹
-    # - Suits: ♥ ♦ ♠ ♣
     # - Space, tab, newline
 }
 ```
@@ -331,10 +329,10 @@ The `BlueCLI` class in `ui.py` provides high-level output methods that use the t
 |--------|--------|-------|
 | `cli.banner("TEXT")` | ASCII art with gradient | Blue gradient |
 | `cli.header("Title")` | Rich panel with border | Blue border, bright title |
-| `cli.success("msg")` | `✔ msg` | Green |
-| `cli.error("msg")` | `✘ msg` | Red |
-| `cli.warning("msg")` | `⚠ msg` | Yellow |
-| `cli.info("msg")` | `ℹ msg` | Cyan |
+| `cli.success("msg")` | `[OK] msg` | Green |
+| `cli.error("msg")` | `[FAIL] msg` | Red |
+| `cli.warning("msg")` | `[!] msg` | Yellow |
+| `cli.info("msg")` | `[i] msg` | Cyan |
 | `cli.table(headers, rows)` | Rich table | Blue-themed |
 | `cli.status_table(patches)` | Patch status table | Blue with status colors |
 | `cli.divider()` | `───...───` | Dim |

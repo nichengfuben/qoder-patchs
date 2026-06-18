@@ -131,7 +131,7 @@ def _get_utf8_stdout():
     """Return a UTF-8 text stream for stdout on Windows.
 
     On Chinese Windows the console code page is typically GBK (cp936),
-    which cannot encode many Unicode symbols (e.g. ℹ, ✔, ✘, ⚠).  Rich
+    which cannot encode many Unicode symbols.  Rich
     uses the legacy Win32 console API by default on such systems, which
     writes through the GBK code page and raises ``UnicodeEncodeError``.
 
@@ -164,7 +164,7 @@ def get_console(theme: bool = True) -> Console:
     """Create a :class:`~rich.console.Console` configured with the blue theme.
 
     On Windows, stdout is wrapped to UTF-8 encoding and Rich's legacy
-    Windows rendering is disabled so that Unicode symbols (ℹ, ✔, ✘, ⚠)
+    Windows rendering is disabled so that Unicode symbols ([i], [OK], [FAIL], [!])
     can be safely emitted without triggering ``UnicodeEncodeError`` on
     GBK-encoded consoles.
 

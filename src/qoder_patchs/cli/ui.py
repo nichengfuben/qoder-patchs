@@ -166,7 +166,7 @@ class BlueCLI:
         Args:
             msg: Message text.
         """
-        self.console.print(f"[bold green]\u2714[/bold green] {msg}")
+        self.console.print(f"[bold green][OK][/bold green] {msg}")
 
     def error(self, msg: str) -> None:
         """Print a red error message.
@@ -174,7 +174,7 @@ class BlueCLI:
         Args:
             msg: Message text.
         """
-        self.console.print(f"[bold red]\u2718[/bold red] {msg}")
+        self.console.print(f"[bold red][FAIL][/bold red] {msg}")
 
     def warning(self, msg: str) -> None:
         """Print a yellow warning message.
@@ -182,7 +182,7 @@ class BlueCLI:
         Args:
             msg: Message text.
         """
-        self.console.print(f"[bold yellow]\u26a0[/bold yellow]  {msg}")
+        self.console.print(f"[bold yellow][!][/bold yellow]  {msg}")
 
     def info(self, msg: str) -> None:
         """Print a cyan informational message.
@@ -190,7 +190,7 @@ class BlueCLI:
         Args:
             msg: Message text.
         """
-        self.console.print(f"[bold cyan]\u2139[/bold cyan]  {msg}")
+        self.console.print(f"[bold cyan][i][/bold cyan]  {msg}")
 
     # ---- Table ------------------------------------------------------------
 
