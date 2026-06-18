@@ -98,10 +98,26 @@ class TestPatchResult:
         )
         assert result.success is False
 
-    def test_result_not_applied_not_success(self):
+    def test_result_not_applied_is_success(self):
         result = PatchResult(
             status=PatchStatus.NOT_APPLIED,
             message="Not applied",
+            patch_name="test",
+        )
+        assert result.success is True
+
+    def test_result_partial_not_success(self):
+        result = PatchResult(
+            status=PatchStatus.PARTIAL,
+            message="Partial",
+            patch_name="test",
+        )
+        assert result.success is False
+
+    def test_result_unknown_not_success(self):
+        result = PatchResult(
+            status=PatchStatus.UNKNOWN,
+            message="Unknown",
             patch_name="test",
         )
         assert result.success is False

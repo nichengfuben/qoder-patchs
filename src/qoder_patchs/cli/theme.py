@@ -113,15 +113,6 @@ def get_questionary_style():
     return _QUESTIONARY_STYLE
 
 
-# For backwards-compatible module-level access.  Note that importing
-# prompt_toolkit at import time is acceptable when the package is known
-# to be installed (it is a declared dependency).
-try:
-    QUESTIONARY_STYLE = _build_questionary_style()
-except ImportError:  # pragma: no cover
-    QUESTIONARY_STYLE = None  # type: ignore[assignment]
-
-
 # ---------------------------------------------------------------------------
 # Console factory
 # ---------------------------------------------------------------------------

@@ -107,8 +107,12 @@ class PatchResult:
 
     @property
     def success(self) -> bool:
-        """Whether the patch operation was successful."""
-        return self.status == PatchStatus.APPLIED
+        """Whether the patch operation was successful.
+
+        Both ``APPLIED`` (successful apply) and ``NOT_APPLIED``
+        (successful rollback) are considered successful outcomes.
+        """
+        return self.status in (PatchStatus.APPLIED, PatchStatus.NOT_APPLIED)
 
 
 class PatchBase(ABC):

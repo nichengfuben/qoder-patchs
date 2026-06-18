@@ -218,10 +218,12 @@ class Win10WarningPatch(PatchBase):
         restored: list[Path] = []
 
         if backup_path and backup_path.exists():
-            # Restore from a specific backup file
-            target_name = (
-                backup_path.name.split(".")[0] + "." + backup_path.name.split(".")[1]
-            )
+            bak_marker = ".bak."
+            idx = backup_path.name.find(bak_marker)
+            if idx > 0:
+                target_name = backup_path.name[:idx]
+            else:
+                target_name = backup_path.name.split(".")[0] + "." + backup_path.name.split(".")[1]
             target = bundle_dir / target_name
             if target.exists():
                 target.write_text(
