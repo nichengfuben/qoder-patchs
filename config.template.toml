@@ -1,0 +1,87 @@
+# ==============================================================================
+# qoder-patchs 配置文件模板
+# ==============================================================================
+# 使用说明:
+#   1. 复制此文件为 config.toml:  cp config.template.toml config.toml
+#   2. 根据需要修改 config.toml 中的配置项
+#   3. 配置文件优先级:
+#      --config 参数 > QODER_PATCHS_CONFIG 环境变量 > 项目根 config.toml > 默认值
+# ==============================================================================
+
+[patch]
+# 是否在应用补丁前自动创建备份
+# 类型: bool | 默认: true
+auto_backup = true
+
+# 保留的备份文件数量 (1-10)
+# 超出数量的旧备份将被自动清理
+# 类型: int | 默认: 3
+backup_count = 3
+
+# 默认启用预览模式 (dry-run)
+# 启用后, 补丁应用前会先显示将要执行的操作, 不实际修改文件
+# 类型: bool | 默认: false
+dry_run_default = false
+
+# 强制重新应用已应用的补丁
+# 启用后, 即使补丁已应用也会重新执行 (可能覆盖手动修改)
+# 类型: bool | 默认: false
+force_reapply = false
+
+[ui]
+# 主题名称 (当前仅支持 "blue")
+# 未来版本可能支持更多主题
+# 类型: str | 默认: "blue"
+theme = "blue"
+
+# 启动时显示 ASCII 艺术横幅
+# 类型: bool | 默认: true
+show_banner = true
+
+# 详细输出模式
+# 启用后显示 DEBUG 级别日志, 包含更多调试信息
+# 类型: bool | 默认: false
+verbose = false
+
+# 使用彩色输出
+# 禁用后所有输出均为纯文本 (适用于日志重定向或终端不支持 ANSI)
+# 也可通过环境变量 NO_COLOR=1 禁用
+# 类型: bool | 默认: true
+use_color = true
+
+[paths]
+# 手动指定 bundle 目录 (省略则自动查找)
+# 自动查找策略 (按优先级):
+#   1. 环境变量 QODER_PATCHS_BUNDLE
+#   2. npm root -g @qoder-ai/qodercli / bundle
+#   3. 常见安装路径扫描
+# 类型: str | 默认: 省略 (自动查找)
+# bundle_dir = "C:/Users/xxx/AppData/Roaming/npm/node_modules/@qoder-ai/qodercli/bundle"
+
+# 备份目录 (相对于项目根目录)
+# 补丁应用前的原始文件将备份到此目录
+# 类型: str | 默认: ".backup"
+backup_dir = ".backup"
+
+# 日志文件路径 (省略则仅控制台输出)
+# 启用后日志同时写入控制台和文件, 文件日志包含更详细的信息
+# 适用于计划任务自动运行时记录日志
+# 类型: str | 默认: 省略
+# log_file = "logs/qoder-patchs.log"
+
+[persistence]
+# 是否创建 Windows 计划任务
+# 创建开机自启任务, 在用户登录时自动应用补丁
+# 需要管理员权限
+# 类型: bool | 默认: true
+scheduled_task = true
+
+# 是否安装 npm post-install 钩子
+# 在 npm install/update 后自动重新应用补丁
+# 类型: bool | 默认: true
+npm_hooks = true
+
+# CLI 更新后自动重新应用补丁
+# 检测到 Qoder CLI 版本变化时, 自动重新应用所有补丁
+# 类型: bool | 默认: true
+on_update_repatch = true

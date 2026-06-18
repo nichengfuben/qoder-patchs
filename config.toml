@@ -1,0 +1,22 @@
+# qoder-patchs 配置文件
+# 位于项目根目录, 可移植
+
+[patch]
+auto_backup = true
+backup_count = 3
+dry_run_default = false
+force_reapply = false
+
+[ui]
+theme = "blue"
+show_banner = true
+verbose = false
+use_color = true
+
+[paths]
+backup_dir = ".backup"
+
+[persistence]
+scheduled_task = true
+npm_hooks = true
+on_update_repatch = true
