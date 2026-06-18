@@ -14,7 +14,6 @@ Functions:
 
 from __future__ import annotations
 
-import sys
 from typing import Any, Optional
 
 import questionary
@@ -162,8 +161,8 @@ def config_menu(config: Any) -> Optional[tuple[str, Any]]:
         section = getattr(config, section_name, None)
         if section is None:
             continue
-        if hasattr(section, "model_fields"):
-            fields = section.model_fields
+        if hasattr(type(section), "model_fields"):
+            fields = type(section).model_fields
         elif hasattr(section, "__fields__"):
             fields = section.__fields__
         else:

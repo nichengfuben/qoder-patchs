@@ -307,7 +307,6 @@ def _strategy_common_paths() -> Optional[Path]:
     for candidate in candidates:
         # Handle glob patterns (e.g., nvm versions/node/*)
         if "*" in str(candidate):
-            parent = candidate.parent
             # Find the glob component and expand
             parts = candidate.parts
             for i, part in enumerate(parts):

@@ -23,14 +23,13 @@ from typing import Any, Optional
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 from qoder_patchs.cli.charmap import (
     BLUE_GRADIENT_PALETTE,
     render_gradient_banner,
     render_text,
 )
-from qoder_patchs.cli.theme import BLUE_THEME, BluePalette, get_console
+from qoder_patchs.cli.theme import get_console
 
 
 # ---------------------------------------------------------------------------

@@ -26,12 +26,10 @@ Usage::
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Optional
 
 import typer
-from loguru import logger
 
 from qoder_patchs import __version__
 
@@ -201,10 +199,7 @@ def _interactive_mode() -> None:
         MENU_EXIT,
         MENU_ROLLBACK,
         MENU_STATUS,
-        config_menu,
-        confirm,
         main_menu,
-        patch_select_menu,
     )
 
     cli = _get_cli()
@@ -253,6 +248,8 @@ def _interactive_mode() -> None:
 
 def _interactive_apply(cli) -> None:
     """Interactive patch application flow."""
+    from qoder_patchs.cli.menu import patch_select_menu
+
     registry = _get_registry()
     engine = _get_engine()
     bundle_dir = _get_bundle_dir()
@@ -309,6 +306,7 @@ def _interactive_status(cli) -> None:
 def _interactive_rollback(cli) -> None:
     """Interactive rollback flow."""
     from qoder_patchs.cli.menu import confirm as qconfirm
+    from qoder_patchs.cli.menu import patch_select_menu
 
     engine = _get_engine()
     bundle_dir = _get_bundle_dir()
@@ -342,6 +340,8 @@ def _interactive_rollback(cli) -> None:
 
 def _interactive_config(cli) -> None:
     """Interactive config editor."""
+    from qoder_patchs.cli.menu import config_menu
+
     config = _get_config()
     result = config_menu(config)
     if result is None:
@@ -378,11 +378,11 @@ def _show_about(cli) -> None:
     """Display about information."""
     cli.print()
     cli.print(f"  [bold bright_blue]Qoder Patch Manager v{__version__}[/bold bright_blue]")
-    cli.print(f"  [dim]\u4f5c\u8005: nichengfuben[/dim]")  # 作者
-    cli.print(f"  [dim]\u8bb8\u53ef\u8bc1: MIT[/dim]")  # 许可证
+    cli.print("  [dim]\u4f5c\u8005: nichengfuben[/dim]")  # 作者
+    cli.print("  [dim]\u8bb8\u53ef\u8bc1: MIT[/dim]")  # 许可证
     cli.print(
-        f"  [dim]\u63cf\u8ff0: Qoder CLI \u8865\u4e01\u7ba1\u7406\u5de5\u5177, "
-        f"\u652f\u6301\u4ea4\u4e92\u5f0f\u83dc\u5355\u548c\u53ef\u6269\u5c55\u8865\u4e01\u7cfb\u7edf[/dim]"
+        "  [dim]\u63cf\u8ff0: Qoder CLI \u8865\u4e01\u7ba1\u7406\u5de5\u5177, "
+        "\u652f\u6301\u4ea4\u4e92\u5f0f\u83dc\u5355\u548c\u53ef\u6269\u5c55\u8865\u4e01\u7cfb\u7edf[/dim]"
     )
     # 描述: Qoder CLI 补丁管理工具, 支持交互式菜单和可扩展补丁系统
     cli.print()
@@ -563,8 +563,8 @@ def config_show() -> None:
         if section is None:
             continue
         cli.print(f"\n  [bold cyan][{section_name}][/bold cyan]")
-        if hasattr(section, "model_fields"):
-            for field_name in section.model_fields:
+        if hasattr(type(section), "model_fields"):
+            for field_name in type(section).model_fields:
                 value = getattr(section, field_name, None)
                 cli.print(f"    {field_name} = {value}")
 
