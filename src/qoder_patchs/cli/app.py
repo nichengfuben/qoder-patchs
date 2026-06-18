@@ -215,8 +215,7 @@ def _interactive_mode() -> None:
         cli.banner("QODER")
         cli.print()
         cli.print(
-            f"  [bold bright_blue]Qoder Patch Manager[/bold bright_blue] "
-            f"[dim]v{__version__}[/dim]"
+            f"  [bold bright_blue]Qoder Patch Manager v{__version__}[/bold bright_blue]"
         )
         cli.divider()
         cli.print()
@@ -378,7 +377,7 @@ def _interactive_config(cli) -> None:
 def _show_about(cli) -> None:
     """Display about information."""
     cli.print()
-    cli.print(f"  [bold bright_blue]Qoder Patch Manager[/bold bright_blue] v{__version__}")
+    cli.print(f"  [bold bright_blue]Qoder Patch Manager v{__version__}[/bold bright_blue]")
     cli.print(f"  [dim]\u4f5c\u8005: nichengfuben[/dim]")  # 作者
     cli.print(f"  [dim]\u8bb8\u53ef\u8bc1: MIT[/dim]")  # 许可证
     cli.print(
