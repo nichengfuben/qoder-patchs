@@ -289,11 +289,11 @@ print('Registered patches:', r.names())
 
 ## Helper Utilities / 辅助工具
 
-The `_templates.py` module provides reusable helpers:
-`_templates.py` 模块提供可复用的辅助函数:
+The `templates.py` module provides reusable helpers:
+`templates.py` 模块提供可复用的辅助函数:
 
 ```python
-from qoder_patchs.patches._templates import (
+from qoder_patchs.patches.templates import (
     read_file_text,        # UTF-8 file reader
     create_inline_backup,  # Timestamped backup creator
     safe_regex_replace,    # Regex replace with verification

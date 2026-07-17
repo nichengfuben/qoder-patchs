@@ -23,6 +23,10 @@ from loguru import logger
 
 from qoder_patchs.core.patch_base import PatchBase
 
+# Modules in qoder_patchs.patches that must never be auto-discovered as
+# patches, even though their name no longer starts with "_".
+EXCLUDED_DISCOVERY_MODULES = {"templates"}
+
 
 class PatchRegistry:
     """Central registry for patch instances.
@@ -110,7 +114,7 @@ class PatchRegistry:
             return
 
         for _importer, module_name, _ispkg in pkgutil.iter_modules(package.__path__):
-            if module_name.startswith("_"):
+            if module_name.startswith("_") or module_name in EXCLUDED_DISCOVERY_MODULES:
                 logger.debug(f"Skipping private module: {module_name}")
                 continue
 

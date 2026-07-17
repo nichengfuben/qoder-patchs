@@ -217,9 +217,9 @@ Patching strategies:
 1. Standard: Replace function body without nested braces.
 2. Extended: Handle nested braces by matching to next `function` keyword.
 
-#### `_templates.py` -- Development Templates / 开发模板
+#### `templates.py` -- Development Templates / 开发模板
 
-Provides `_ExamplePatch` template class, helper functions (`read_file_text`, `create_inline_backup`, `safe_regex_replace`), and a `NEW_PATCH_CHECKLIST`. Excluded from auto-discovery (leading underscore).
+Provides `_ExamplePatch` template class, helper functions (`read_file_text`, `create_inline_backup`, `safe_regex_replace`), and a `NEW_PATCH_CHECKLIST`. Excluded from auto-discovery via `EXCLUDED_DISCOVERY_MODULES` in `registry.py`.
 
 ### `utils/` -- Utilities / 工具函数
 
