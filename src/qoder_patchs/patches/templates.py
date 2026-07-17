@@ -1,8 +1,8 @@
 """Patch development template and reference.
 
 This module provides a documented template class and helper patterns for
-creating new patches.  It is **not** auto-discovered by the registry (the
-leading underscore excludes it from ``pkgutil.iter_modules`` scans).
+creating new patches.  It is **not** auto-discovered by the registry (it is
+listed in ``EXCLUDED_DISCOVERY_MODULES`` in ``core/registry.py``).
 
 Usage::
 

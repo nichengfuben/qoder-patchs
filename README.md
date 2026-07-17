@@ -255,7 +255,7 @@ src/qoder_patchs/
  |   +-- charmap.py      #   ASCII art rendering / ASCII 艺术渲染
  +-- patches/            # Patch implementations / 补丁实现
  |   +-- win10_warning.py  # Win10 warning suppression / Win10 警告抑制
- |   +-- _templates.py     # Development templates / 开发模板
+ |   +-- templates.py      # Development templates / 开发模板
  +-- utils/              # Utilities / 工具函数
      +-- backup.py       #   Backup manager / 备份管理器
      +-- paths.py        #   Path resolution / 路径解析
