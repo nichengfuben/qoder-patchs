@@ -19,12 +19,13 @@ from pathlib import Path
 import pytest
 
 from qoder_patchs.core.patch_base import PatchResult, PatchStatus
-from qoder_patchs.patches.win10_warning import (
-    Win10WarningPatch,
-    _EXPORT_PATTERN,
-    _FALLBACK_PATTERN,
-    _PATCHED_PATTERN,
+from qoder_patchs.patches.win10_detect import (
+    EXPORT_PATTERN,
+    FALLBACK_PATTERN,
+    PATCHED_PATTERN,
+    detect_func_name,
 )
+from qoder_patchs.patches.win10_warning import Win10WarningPatch
 
 
 @pytest.fixture()
@@ -43,18 +44,18 @@ class TestDetectFuncNameStandard:
 
     def test_detect_func_name_standard(self, patch_instance):
         content = 'var m={isWindows10:()=>t2,isLinux:()=>t1};'
-        name = patch_instance._detect_func_name(content, "test.js")
+        name = detect_func_name(content, "test.js")
         assert name == "t2"
 
     def test_detect_func_name_longer_name(self, patch_instance):
         content = 'exports={isWindows10:()=>_isWin10Check};'
-        name = patch_instance._detect_func_name(content, "test.js")
+        name = detect_func_name(content, "test.js")
         assert name == "_isWin10Check"
 
     def test_detect_standard_pattern_regex(self):
         """Verify the compiled regex matches expected patterns."""
         text = 'isWindows10:()=>abc123'
-        m = _EXPORT_PATTERN.search(text)
+        m = EXPORT_PATTERN.search(text)
         assert m is not None
         assert m.group(1) == "abc123"
 
@@ -64,19 +65,19 @@ class TestDetectFuncNameFallback:
 
     def test_detect_func_name_fallback(self, patch_instance):
         content = 'function myFunc(){return!0}if(myFunc()&&warnings.push({id:"windows-10"'
-        name = patch_instance._detect_func_name(content, "test.js")
+        name = detect_func_name(content, "test.js")
         assert name == "myFunc"
 
     def test_detect_fallback_pattern_regex(self):
         """Verify the fallback regex matches expected patterns."""
         text = 't99()&&errs.push({id:"windows-10"'
-        m = _FALLBACK_PATTERN.search(text)
+        m = FALLBACK_PATTERN.search(text)
         assert m is not None
         assert m.group(1) == "t99"
 
     def test_detect_func_name_not_found(self, patch_instance):
         content = 'var x = 42; console.log("hello");'
-        name = patch_instance._detect_func_name(content, "test.js")
+        name = detect_func_name(content, "test.js")
         assert name is None
 
 
@@ -287,12 +288,12 @@ class TestPatchedPattern:
     """Test the _PATCHED_PATTERN regex."""
 
     def test_matches_patched_function(self):
-        assert _PATCHED_PATTERN.search("function t2(){return!1}") is not None
+        assert PATCHED_PATTERN.search("function t2(){return!1}") is not None
 
     def test_no_match_unpatched(self):
-        assert _PATCHED_PATTERN.search("function t2(){return!0}") is None
+        assert PATCHED_PATTERN.search("function t2(){return!0}") is None
 
     def test_matches_any_name(self):
-        m = _PATCHED_PATTERN.search("function _abc(){return!1}")
+        m = PATCHED_PATTERN.search("function _abc(){return!1}")
         assert m is not None
         assert m.group(1) == "_abc"

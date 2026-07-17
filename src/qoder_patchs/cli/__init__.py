@@ -12,7 +12,7 @@ from qoder_patchs.cli.charmap import (
     render_gradient_banner,
     render_text,
 )
-from qoder_patchs.cli.theme import (
+from qoder_patchs.cli.commands.theme import (
     BLUE_THEME,
     BluePalette,
     get_console,

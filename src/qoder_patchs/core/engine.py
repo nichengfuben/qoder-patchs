@@ -103,7 +103,34 @@ class PatchEngine:
                 error=f"Unknown patch: {name}",
             )
 
-        # Validate pre-conditions
+        validation_failure = self._validate_apply_preconditions(patch, name, bundle_dir, dry_run)
+        if validation_failure is not None:
+            return validation_failure
+
+        already_applied = self._check_already_applied(patch, name, bundle_dir, dry_run)
+        if already_applied is not None:
+            return already_applied
+
+        return self._execute_apply(patch, name, bundle_dir, dry_run)
+
+    def _validate_apply_preconditions(
+        self,
+        patch: PatchBase,
+        name: str,
+        bundle_dir: Path,
+        dry_run: bool,
+    ) -> Optional[PatchResult]:
+        """Validate patch pre-conditions.
+
+        Args:
+            patch: The resolved patch instance.
+            name: Patch name (kebab-case).
+            bundle_dir: Path to the Qoder CLI bundle directory.
+            dry_run: If ``True``, simulate without modifying files.
+
+        Returns:
+            A failed :class:`PatchResult` if validation fails, otherwise ``None``.
+        """
         issues = patch.validate(bundle_dir)
         if issues and not dry_run:
             issue_text = "; ".join(issues)
@@ -114,8 +141,26 @@ class PatchEngine:
                 patch_name=name,
                 error=issue_text,
             )
+        return None
 
-        # Check if already applied
+    def _check_already_applied(
+        self,
+        patch: PatchBase,
+        name: str,
+        bundle_dir: Path,
+        dry_run: bool,
+    ) -> Optional[PatchResult]:
+        """Check if the patch is already applied and should be skipped.
+
+        Args:
+            patch: The resolved patch instance.
+            name: Patch name (kebab-case).
+            bundle_dir: Path to the Qoder CLI bundle directory.
+            dry_run: If ``True``, simulate without modifying files.
+
+        Returns:
+            An "already applied" :class:`PatchResult` if applicable, otherwise ``None``.
+        """
         if not self._config.patch.force_reapply and not dry_run:
             current_status = patch.check(bundle_dir)
             if current_status == PatchStatus.APPLIED:
@@ -125,8 +170,26 @@ class PatchEngine:
                     message=f"Patch '{name}' is already applied",
                     patch_name=name,
                 )
+        return None
 
-        # Apply the patch
+    def _execute_apply(
+        self,
+        patch: PatchBase,
+        name: str,
+        bundle_dir: Path,
+        dry_run: bool,
+    ) -> PatchResult:
+        """Execute the patch's apply method and handle errors.
+
+        Args:
+            patch: The resolved patch instance.
+            name: Patch name (kebab-case).
+            bundle_dir: Path to the Qoder CLI bundle directory.
+            dry_run: If ``True``, simulate without modifying files.
+
+        Returns:
+            A :class:`PatchResult` describing the outcome.
+        """
         logger.info(f"Applying patch: {name} (dry_run={dry_run})")
         try:
             result = patch.apply(bundle_dir, dry_run=dry_run)
@@ -208,7 +271,22 @@ class PatchEngine:
                 error=f"Unknown patch: {name}",
             )
 
-        # Check reversibility
+        reversibility_failure = self._check_reversibility(patch, name)
+        if reversibility_failure is not None:
+            return reversibility_failure
+
+        return self._execute_rollback(patch, name, bundle_dir)
+
+    def _check_reversibility(self, patch: PatchBase, name: str) -> Optional[PatchResult]:
+        """Check that the patch supports rollback.
+
+        Args:
+            patch: The resolved patch instance.
+            name: Patch name (kebab-case).
+
+        Returns:
+            A failed :class:`PatchResult` if the patch is not reversible, otherwise ``None``.
+        """
         if not patch.metadata.reversible:
             logger.error(f"Patch '{name}' is not reversible")
             return PatchResult(
@@ -217,7 +295,19 @@ class PatchEngine:
                 patch_name=name,
                 error="Patch is not reversible",
             )
+        return None
 
+    def _execute_rollback(self, patch: PatchBase, name: str, bundle_dir: Path) -> PatchResult:
+        """Execute the patch's rollback method and handle errors.
+
+        Args:
+            patch: The resolved patch instance.
+            name: Patch name (kebab-case).
+            bundle_dir: Path to the Qoder CLI bundle directory.
+
+        Returns:
+            A :class:`PatchResult` describing the rollback outcome.
+        """
         logger.info(f"Rolling back patch: {name}")
         try:
             result = patch.rollback(bundle_dir)

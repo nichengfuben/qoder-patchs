@@ -290,6 +290,56 @@ def render_text(text: str) -> list[str]:
     return lines
 
 
+def _terminal_supports_color() -> bool:
+    """Return ``True`` if stdout appears to be an interactive colour terminal."""
+    try:
+        return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+    except Exception:
+        return False
+
+
+def _max_diagonal(width: int, height: int) -> int:
+    """Return the maximum diagonal distance for a *width* x *height* grid.
+
+    Guaranteed to be at least 1, avoiding division by zero when normalising
+    diagonal factors.
+    """
+    total = width + height - 2
+    return total if total > 0 else 1
+
+
+def _colorize_char(ch: str, factor: float, palette: list[tuple[int, int, int]]) -> str:
+    """Return *ch* wrapped in an RGB ANSI escape sequence for the given *factor*.
+
+    Space characters are returned unchanged since there is nothing to colour.
+    """
+    if ch == " ":
+        return " "
+    factor = max(0.0, min(1.0, factor))
+    r, g, b = _multi_lerp(palette, factor)
+    return f"\033[38;2;{r};{g};{b}m{ch}"
+
+
+def _render_gradient_row(
+    line: str,
+    row: int,
+    max_diag: int,
+    palette: list[tuple[int, int, int]],
+    reset: str,
+) -> str:
+    """Render a single *line* of ASCII art with a diagonal gradient applied.
+
+    *row* is the line's vertical position, used together with each
+    character's column to compute its diagonal colour factor.
+    """
+    chars: list[str] = []
+    for col, ch in enumerate(line):
+        factor = (col + row) / max_diag
+        chars.append(_colorize_char(ch, factor, palette))
+    chars.append(reset)
+    return "  " + "".join(chars)
+
+
 def render_gradient_banner(
     lines: list[str],
     palette: list[tuple[int, int, int]] | None = None,
@@ -312,33 +362,17 @@ def render_gradient_banner(
     if palette is None:
         palette = list(BLUE_GRADIENT_PALETTE)
 
-    # Check if terminal supports colour
-    try:
-        color_ok = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
-    except Exception:
-        color_ok = False
-
-    if not color_ok:
+    if not _terminal_supports_color():
         return "\n".join(f"  {line}" for line in lines)
 
     height = len(lines)
     width = max(len(line) for line in lines) if lines else 0
-    max_diag = width + height - 2 if (width + height) > 2 else 1
+    max_diag = _max_diagonal(width, height)
 
     reset = "\033[0m"
-    result_lines: list[str] = []
-    for row, line in enumerate(lines):
-        chars: list[str] = []
-        for col, ch in enumerate(line):
-            if ch == " ":
-                chars.append(" ")
-                continue
-            # Diagonal factor: top-left = 0.0, bottom-right = 1.0
-            factor = (col + row) / max_diag
-            factor = max(0.0, min(1.0, factor))
-            r, g, b = _multi_lerp(palette, factor)
-            chars.append(f"\033[38;2;{r};{g};{b}m{ch}")
-        chars.append(reset)
-        result_lines.append("  " + "".join(chars))
+    result_lines = [
+        _render_gradient_row(line, row, max_diag, palette, reset)
+        for row, line in enumerate(lines)
+    ]
 
     return "\n".join(result_lines)

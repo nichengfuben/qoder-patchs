@@ -9,7 +9,7 @@ import pytest
 from rich.console import Console
 from rich.theme import Theme
 
-from qoder_patchs.cli.theme import (
+from qoder_patchs.cli.commands.theme import (
     BLUE_THEME,
     BluePalette,
     get_console,

@@ -14,7 +14,6 @@ Audit fixes applied:
 
 from __future__ import annotations
 
-import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -22,20 +21,7 @@ from typing import Optional
 from loguru import logger
 
 from qoder_patchs.core.patch_base import PatchBase, PatchMetadata, PatchResult, PatchStatus
-
-
-# ---------------------------------------------------------------------------
-# Compiled regex patterns (replace ``grep -oP`` invocations from the Bash version)
-# ---------------------------------------------------------------------------
-
-# Strategy 1: standard export mapping, e.g. ``isWindows10:()=>t2``
-_EXPORT_PATTERN = re.compile(r"isWindows10:\(\)=>(\w+)")
-
-# Strategy 2: fallback call-chain, e.g. ``t2()&&warnings.push({id:"windows-10"``
-_FALLBACK_PATTERN = re.compile(r'(\w+)\(\)&&\w+\.push\(\{id:"windows-10"')
-
-# Detection of an already-patched function, e.g. ``function t2(){return!1}``
-_PATCHED_PATTERN = re.compile(r"function (\w+)\(\)\{return!1\}")
+from qoder_patchs.patches.win10_detect import PATCHED_PATTERN, detect_func_name, do_patch, verify_patch
 
 
 class Win10WarningPatch(PatchBase):
@@ -92,7 +78,7 @@ class Win10WarningPatch(PatchBase):
                 logger.debug("Target file missing, skipping: {}", fpath)
                 continue
             content = fpath.read_text(encoding="utf-8", errors="ignore")
-            if _PATCHED_PATTERN.search(content) and "isWindows10" in content:
+            if PATCHED_PATTERN.search(content) and "isWindows10" in content:
                 results.append(True)
             else:
                 results.append(False)
@@ -118,79 +104,15 @@ class Win10WarningPatch(PatchBase):
         start = time.monotonic()
         files_modified: list[Path] = []
         backups_created: list[Path] = []
-        total_patched = 0
-        total_skipped = 0
-        total_failed = 0
+        counters = {"patched": 0, "skipped": 0, "failed": 0}
 
         for fname in self.metadata.target_files:
-            fpath = bundle_dir / fname
-            if not fpath.exists():
-                logger.warning("Target file does not exist, skipping: {}", fpath)
-                continue
-
-            content = fpath.read_text(encoding="utf-8", errors="ignore")
-
-            # Step 1: detect the obfuscated isWindows10 function name
-            func_name = self._detect_func_name(content, fname)
-            if not func_name:
-                logger.error("Cannot detect isWindows10 function name in {}", fname)
-                total_failed += 1
-                continue
-
-            logger.debug("Detected function name '{}' in {}", func_name, fname)
-
-            # Step 2: check whether already patched
-            if re.search(
-                rf"function {re.escape(func_name)}\(\)\{{return!1\}}", content
-            ):
-                logger.info("{} is already patched, skipping", fname)
-                total_skipped += 1
-                continue
-
-            if dry_run:
-                logger.info("[dry-run] Would patch {}", fpath)
-                files_modified.append(fpath)
-                continue
-
-            # Step 3: backup original file
-            backup = fpath.with_suffix(
-                fpath.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}"
+            self._apply_single_file(
+                bundle_dir, fname, dry_run, files_modified, backups_created, counters
             )
-            backup.write_text(content, encoding="utf-8")
-            backups_created.append(backup)
-            logger.debug("Backup created: {}", backup)
 
-            # Step 4: apply the patch (pure Python, replaces perl -i -pe)
-            patched_content = self._do_patch(content, func_name)
-
-            if patched_content and self._verify_patch(patched_content, func_name):
-                fpath.write_text(patched_content, encoding="utf-8")
-                files_modified.append(fpath)
-                total_patched += 1
-                logger.info("Successfully patched {}", fname)
-            else:
-                # Patch failed -- restore from backup
-                fpath.write_text(content, encoding="utf-8")
-                total_failed += 1
-                logger.error("Patch failed for {}, restored from backup", fname)
-
-        # -- Build result -------------------------------------------------
-        status = PatchStatus.APPLIED if total_failed == 0 else PatchStatus.FAILED
-        if total_skipped > 0 and total_patched == 0 and total_failed == 0:
-            status = PatchStatus.APPLIED  # all files already patched
-        if dry_run:
-            status = PatchStatus.NOT_APPLIED
-
-        msg_parts: list[str] = []
-        if total_patched:
-            msg_parts.append(f"已补丁 {total_patched} 个文件")
-        if total_skipped:
-            msg_parts.append(f"已跳过 {total_skipped} 个文件 (已补丁)")
-        if total_failed:
-            msg_parts.append(f"失败 {total_failed} 个文件")
-        if dry_run:
-            msg_parts.insert(0, "[预览模式]")
-        message = "; ".join(msg_parts) if msg_parts else "无操作"
+        status = self._build_apply_status(counters, dry_run)
+        message = self._build_apply_message(counters, dry_run)
 
         return PatchResult(
             status=status,
@@ -200,6 +122,152 @@ class Win10WarningPatch(PatchBase):
             backups_created=backups_created,
             duration_ms=(time.monotonic() - start) * 1000,
         )
+
+    def _apply_single_file(
+        self,
+        bundle_dir: Path,
+        fname: str,
+        dry_run: bool,
+        files_modified: list[Path],
+        backups_created: list[Path],
+        counters: dict[str, int],
+    ) -> None:
+        """Detect, back up, and patch a single target file.
+
+        Args:
+            bundle_dir: Path to the Qoder CLI bundle directory.
+            fname: Target file name to patch.
+            dry_run: If ``True``, simulate without modifying files.
+            files_modified: Accumulator list of successfully modified paths.
+            backups_created: Accumulator list of created backup paths.
+            counters: Mutable dict tracking ``patched``/``skipped``/``failed`` counts.
+        """
+        fpath = bundle_dir / fname
+        if not fpath.exists():
+            logger.warning("Target file does not exist, skipping: {}", fpath)
+            return
+
+        content = fpath.read_text(encoding="utf-8", errors="ignore")
+
+        func_name = detect_func_name(content, fname)
+        if not func_name:
+            logger.error("Cannot detect isWindows10 function name in {}", fname)
+            counters["failed"] += 1
+            return
+
+        logger.debug("Detected function name '{}' in {}", func_name, fname)
+
+        if self._is_already_patched(content, func_name, fname, counters):
+            return
+
+        if dry_run:
+            logger.info("[dry-run] Would patch {}", fpath)
+            files_modified.append(fpath)
+            return
+
+        self._backup_and_patch(
+            fpath, fname, content, func_name, files_modified, backups_created, counters
+        )
+
+    def _is_already_patched(
+        self, content: str, func_name: str, fname: str, counters: dict[str, int]
+    ) -> bool:
+        """Check whether *content* already has the patched function body.
+
+        Args:
+            content: Full text content of the target file.
+            func_name: The detected obfuscated function name.
+            fname: File name (for logging purposes).
+            counters: Mutable dict tracking ``patched``/``skipped``/``failed`` counts.
+
+        Returns:
+            ``True`` if already patched (and ``counters["skipped"]`` was incremented).
+        """
+        if verify_patch(content, func_name):
+            logger.info("{} is already patched, skipping", fname)
+            counters["skipped"] += 1
+            return True
+        return False
+
+    def _backup_and_patch(
+        self,
+        fpath: Path,
+        fname: str,
+        content: str,
+        func_name: str,
+        files_modified: list[Path],
+        backups_created: list[Path],
+        counters: dict[str, int],
+    ) -> None:
+        """Back up *fpath*, apply the patch, and verify the result.
+
+        Args:
+            fpath: Full path to the target file.
+            fname: File name (for logging purposes).
+            content: Original file content prior to patching.
+            func_name: The obfuscated function name to patch.
+            files_modified: Accumulator list of successfully modified paths.
+            backups_created: Accumulator list of created backup paths.
+            counters: Mutable dict tracking ``patched``/``skipped``/``failed`` counts.
+        """
+        backup = fpath.with_suffix(
+            fpath.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}"
+        )
+        backup.write_text(content, encoding="utf-8")
+        backups_created.append(backup)
+        logger.debug("Backup created: {}", backup)
+
+        patched_content = do_patch(content, func_name)
+
+        if patched_content and verify_patch(patched_content, func_name):
+            fpath.write_text(patched_content, encoding="utf-8")
+            files_modified.append(fpath)
+            counters["patched"] += 1
+            logger.info("Successfully patched {}", fname)
+        else:
+            fpath.write_text(content, encoding="utf-8")
+            counters["failed"] += 1
+            logger.error("Patch failed for {}, restored from backup", fname)
+
+    def _build_apply_status(
+        self, counters: dict[str, int], dry_run: bool
+    ) -> PatchStatus:
+        """Derive the aggregate :class:`PatchStatus` from per-file counters.
+
+        Args:
+            counters: Dict tracking ``patched``/``skipped``/``failed`` counts.
+            dry_run: If ``True``, force a ``NOT_APPLIED`` status.
+
+        Returns:
+            The aggregate :class:`PatchStatus` for the apply operation.
+        """
+        status = PatchStatus.APPLIED if counters["failed"] == 0 else PatchStatus.FAILED
+        if counters["skipped"] > 0 and counters["patched"] == 0 and counters["failed"] == 0:
+            status = PatchStatus.APPLIED  # all files already patched
+        if dry_run:
+            status = PatchStatus.NOT_APPLIED
+        return status
+
+    def _build_apply_message(self, counters: dict[str, int], dry_run: bool) -> str:
+        """Build the human-readable summary message for the apply result.
+
+        Args:
+            counters: Dict tracking ``patched``/``skipped``/``failed`` counts.
+            dry_run: If ``True``, prefix the message with a preview marker.
+
+        Returns:
+            A semicolon-joined Chinese summary string, or ``"无操作"`` if empty.
+        """
+        msg_parts: list[str] = []
+        if counters["patched"]:
+            msg_parts.append(f"已补丁 {counters['patched']} 个文件")
+        if counters["skipped"]:
+            msg_parts.append(f"已跳过 {counters['skipped']} 个文件 (已补丁)")
+        if counters["failed"]:
+            msg_parts.append(f"失败 {counters['failed']} 个文件")
+        if dry_run:
+            msg_parts.insert(0, "[预览模式]")
+        return "; ".join(msg_parts) if msg_parts else "无操作"
 
     def rollback(
         self, bundle_dir: Path, backup_path: Optional[Path] = None
@@ -218,34 +286,9 @@ class Win10WarningPatch(PatchBase):
         restored: list[Path] = []
 
         if backup_path and backup_path.exists():
-            bak_marker = ".bak."
-            idx = backup_path.name.find(bak_marker)
-            if idx > 0:
-                target_name = backup_path.name[:idx]
-            else:
-                target_name = backup_path.name.split(".")[0] + "." + backup_path.name.split(".")[1]
-            target = bundle_dir / target_name
-            if target.exists():
-                target.write_text(
-                    backup_path.read_text(encoding="utf-8"), encoding="utf-8"
-                )
-                restored.append(target)
-                logger.info("Restored {} from {}", target, backup_path)
+            self._rollback_from_explicit_backup(bundle_dir, backup_path, restored)
         else:
-            # Find the most recent backup for each target file
-            for fname in self.metadata.target_files:
-                backups = sorted(
-                    bundle_dir.glob(f"{fname}.bak.*"),
-                    key=lambda p: p.stat().st_mtime,
-                    reverse=True,
-                )
-                if backups:
-                    target = bundle_dir / fname
-                    target.write_text(
-                        backups[0].read_text(encoding="utf-8"), encoding="utf-8"
-                    )
-                    restored.append(target)
-                    logger.info("Restored {} from latest backup {}", target, backups[0])
+            self._rollback_from_latest_backups(bundle_dir, restored)
 
         status = PatchStatus.NOT_APPLIED if restored else PatchStatus.FAILED
         return PatchResult(
@@ -258,103 +301,49 @@ class Win10WarningPatch(PatchBase):
             duration_ms=(time.monotonic() - start) * 1000,
         )
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _detect_func_name(self, content: str, fname: str) -> Optional[str]:
-        """Detect the obfuscated function name mapped to ``isWindows10``.
-
-        Two detection strategies are tried in order:
-
-        1. **Export mapping** -- looks for ``isWindows10:()=><NAME>``.
-        2. **Fallback call-chain** -- looks for ``<NAME>()&&<var>.push({id:"windows-10"``.
+    def _rollback_from_explicit_backup(
+        self, bundle_dir: Path, backup_path: Path, restored: list[Path]
+    ) -> None:
+        """Restore a single target file from an explicitly given backup path.
 
         Args:
-            content: Full text content of the target file.
-            fname: File name (for logging purposes).
-
-        Returns:
-            The detected function name, or ``None`` if neither strategy matches.
+            bundle_dir: Path to the Qoder CLI bundle directory.
+            backup_path: The specific backup file to restore from.
+            restored: Accumulator list of successfully restored target paths.
         """
-        # Strategy 1: standard export mapping
-        match = _EXPORT_PATTERN.search(content)
-        if match:
-            logger.debug(
-                "Detected function name via export mapping in {}: {}",
-                fname,
-                match.group(1),
+        bak_marker = ".bak."
+        idx = backup_path.name.find(bak_marker)
+        if idx > 0:
+            target_name = backup_path.name[:idx]
+        else:
+            target_name = backup_path.name.split(".")[0] + "." + backup_path.name.split(".")[1]
+        target = bundle_dir / target_name
+        if target.exists():
+            target.write_text(
+                backup_path.read_text(encoding="utf-8"), encoding="utf-8"
             )
-            return match.group(1)
+            restored.append(target)
+            logger.info("Restored {} from {}", target, backup_path)
 
-        # Strategy 2: fallback call-chain
-        match = _FALLBACK_PATTERN.search(content)
-        if match:
-            logger.debug(
-                "Detected function name via fallback call-chain in {}: {}",
-                fname,
-                match.group(1),
-            )
-            return match.group(1)
-
-        return None
-
-    def _do_patch(self, content: str, func_name: str) -> Optional[str]:
-        """Replace the function body with ``return!1``.
-
-        Two replacement strategies are attempted:
-
-        1. **Standard** -- ``function <name>(){...}`` where the body has no
-           nested braces.
-        2. **Extended** -- handles bodies with nested braces by matching up to
-           the next ``function`` keyword.
+    def _rollback_from_latest_backups(
+        self, bundle_dir: Path, restored: list[Path]
+    ) -> None:
+        """Restore each target file from its most recent backup, if any.
 
         Args:
-            content: Full text content of the target file.
-            func_name: The obfuscated function name to patch.
-
-        Returns:
-            The patched content string, or ``None`` if neither strategy
-            produced a verifiable result.
+            bundle_dir: Path to the Qoder CLI bundle directory.
+            restored: Accumulator list of successfully restored target paths.
         """
-        escaped = re.escape(func_name)
-
-        # Strategy 1: standard replacement (no nested braces)
-        result = re.sub(
-            rf"function {escaped}\(\)\{{[^}}]*\}}",
-            f"function {func_name}(){{return!1}}",
-            content,
-        )
-        if self._verify_patch(result, func_name):
-            logger.debug("Patch applied via standard strategy for {}", func_name)
-            return result
-
-        # Strategy 2: extended replacement (handles nested braces)
-        result = re.sub(
-            rf"function {escaped}\(\)\{{.*?\}}function",
-            f"function {func_name}(){{return!1}}function",
-            content,
-        )
-        if self._verify_patch(result, func_name):
-            logger.debug("Patch applied via extended strategy for {}", func_name)
-            return result
-
-        logger.error("Neither patching strategy succeeded for {}", func_name)
-        return None
-
-    def _verify_patch(self, content: str, func_name: str) -> bool:
-        """Verify that the patched function body is present in *content*.
-
-        Args:
-            content: Text content to verify.
-            func_name: The function name that should now return ``!1``.
-
-        Returns:
-            ``True`` if the expected replacement is found.
-        """
-        return bool(
-            re.search(
-                rf"function {re.escape(func_name)}\(\)\{{return!1\}}",
-                content,
+        for fname in self.metadata.target_files:
+            backups = sorted(
+                bundle_dir.glob(f"{fname}.bak.*"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
             )
-        )
+            if backups:
+                target = bundle_dir / fname
+                target.write_text(
+                    backups[0].read_text(encoding="utf-8"), encoding="utf-8"
+                )
+                restored.append(target)
+                logger.info("Restored {} from latest backup {}", target, backups[0])
