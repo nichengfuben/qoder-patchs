@@ -174,6 +174,74 @@ def _strip_none_values(obj: object) -> object:
     return obj
 
 
+def _resolve_from_cli_arg(cli_arg: str) -> Path:
+    """Resolve config path from an explicit CLI ``--config`` argument.
+
+    Args:
+        cli_arg: Path string from the ``--config`` CLI argument.
+
+    Returns:
+        The resolved ``Path`` to the config file.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+    """
+    p = Path(cli_arg)
+    if p.exists():
+        logger.debug(f"Config resolved from CLI arg: {p}")
+        return p
+    raise FileNotFoundError(f"Specified config file does not exist: {cli_arg}")
+
+
+def _resolve_from_env_var() -> Optional[Path]:
+    """Resolve config path from the ``QODER_PATCHS_CONFIG`` environment variable.
+
+    Returns:
+        The resolved ``Path`` to the config file, or ``None`` if not set/found.
+    """
+    env_path = os.environ.get("QODER_PATCHS_CONFIG")
+    if env_path:
+        p = Path(env_path)
+        if p.exists():
+            logger.debug(f"Config resolved from env var: {p}")
+            return p
+        logger.warning(f"QODER_PATCHS_CONFIG set but file not found: {env_path}")
+    return None
+
+
+def _resolve_from_project_root() -> Optional[Path]:
+    """Resolve config path from ``config.toml`` in the project root directory.
+
+    Returns:
+        The resolved ``Path`` to the config file, or ``None`` if not found.
+    """
+    # __file__ -> core/config.py -> core -> qoder_patchs -> src -> project root
+    project_root = Path(__file__).resolve().parent.parent.parent.parent
+    local_config = project_root / "config.toml"
+    if local_config.exists():
+        logger.debug(f"Config resolved from project root: {local_config}")
+        return local_config
+    return None
+
+
+def _resolve_from_user_config_dir() -> Optional[Path]:
+    """Resolve config path from the user configuration directory (platformdirs).
+
+    Returns:
+        The resolved ``Path`` to the config file, or ``None`` if not found.
+    """
+    try:
+        from platformdirs import user_config_dir
+
+        user_config = Path(user_config_dir("qoder-patchs", "nichengfuben")) / "config.toml"
+        if user_config.exists():
+            logger.debug(f"Config resolved from user config dir: {user_config}")
+            return user_config
+    except ImportError:
+        logger.debug("platformdirs not available, skipping user config dir")
+    return None
+
+
 def resolve_config_path(cli_arg: Optional[str] = None) -> Optional[Path]:
     """Resolve the configuration file path by priority.
 
@@ -195,39 +263,22 @@ def resolve_config_path(cli_arg: Optional[str] = None) -> Optional[Path]:
     """
     # Priority 1: CLI --config argument
     if cli_arg:
-        p = Path(cli_arg)
-        if p.exists():
-            logger.debug(f"Config resolved from CLI arg: {p}")
-            return p
-        raise FileNotFoundError(f"Specified config file does not exist: {cli_arg}")
+        return _resolve_from_cli_arg(cli_arg)
 
     # Priority 2: QODER_PATCHS_CONFIG environment variable
-    env_path = os.environ.get("QODER_PATCHS_CONFIG")
-    if env_path:
-        p = Path(env_path)
-        if p.exists():
-            logger.debug(f"Config resolved from env var: {p}")
-            return p
-        logger.warning(f"QODER_PATCHS_CONFIG set but file not found: {env_path}")
+    resolved = _resolve_from_env_var()
+    if resolved is not None:
+        return resolved
 
     # Priority 3: Project root directory (portable)
-    # __file__ -> core/config.py -> core -> qoder_patchs -> src -> project root
-    project_root = Path(__file__).resolve().parent.parent.parent.parent
-    local_config = project_root / "config.toml"
-    if local_config.exists():
-        logger.debug(f"Config resolved from project root: {local_config}")
-        return local_config
+    resolved = _resolve_from_project_root()
+    if resolved is not None:
+        return resolved
 
     # Priority 4: User configuration directory (platformdirs)
-    try:
-        from platformdirs import user_config_dir
-
-        user_config = Path(user_config_dir("qoder-patchs", "nichengfuben")) / "config.toml"
-        if user_config.exists():
-            logger.debug(f"Config resolved from user config dir: {user_config}")
-            return user_config
-    except ImportError:
-        logger.debug("platformdirs not available, skipping user config dir")
+    resolved = _resolve_from_user_config_dir()
+    if resolved is not None:
+        return resolved
 
     # Priority 5: Not found -> use defaults
     logger.debug("No config file found, will use defaults")

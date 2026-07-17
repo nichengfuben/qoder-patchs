@@ -29,6 +29,23 @@ _BUNDLE_SUBDIR = "qodercli"
 _BUNDLE_DIR_NAME = "bundle"
 
 
+def _run_bundle_strategies(config: Optional["AppConfig"]) -> Optional[Path]:
+    """Run the six bundle-discovery strategies in order and return the first hit."""
+    strategies = (
+        lambda: _strategy_config(config),
+        _strategy_env_var,
+        _strategy_npm_prefix,
+        _strategy_appdata,
+        _strategy_common_paths,
+        _strategy_find,
+    )
+    for strategy in strategies:
+        result = strategy()
+        if result:
+            return result
+    return None
+
+
 def find_bundle_dir(config: Optional["AppConfig"] = None) -> Optional[Path]:
     """Locate the Qoder CLI bundle directory using multiple fallback strategies.
 
@@ -51,33 +68,7 @@ def find_bundle_dir(config: Optional["AppConfig"] = None) -> Optional[Path]:
         A :class:`Path` to the bundle directory, or ``None`` if no
         valid bundle directory could be found.
     """
-    # Strategy A: Explicit config override
-    result = _strategy_config(config)
-    if result:
-        return result
-
-    # Strategy B: Environment variable
-    result = _strategy_env_var()
-    if result:
-        return result
-
-    # Strategy C: npm prefix -g
-    result = _strategy_npm_prefix()
-    if result:
-        return result
-
-    # Strategy D: APPDATA-based path
-    result = _strategy_appdata()
-    if result:
-        return result
-
-    # Strategy E: Common installation paths
-    result = _strategy_common_paths()
-    if result:
-        return result
-
-    # Strategy F: Filesystem search (last resort)
-    result = _strategy_find()
+    result = _run_bundle_strategies(config)
     if result:
         return result
 
@@ -271,10 +262,8 @@ def _strategy_appdata() -> Optional[Path]:
     return None
 
 
-def _strategy_common_paths() -> Optional[Path]:
-    """Strategy E: Check common installation paths."""
-    home = Path.home()
-
+def _common_path_candidates(home: Path) -> "list[Path]":
+    """Build the list of common bundle path candidates to check."""
     candidates: list[Path] = []
 
     # Windows common paths
@@ -304,21 +293,38 @@ def _strategy_common_paths() -> Optional[Path]:
         home / ".nvm" / "versions" / "node" / "*" / "lib" / "node_modules" / _BUNDLE_PACKAGE / _BUNDLE_SUBDIR / _BUNDLE_DIR_NAME,
     ])
 
+    return candidates
+
+
+def _resolve_glob_candidate(candidate: Path) -> Optional[Path]:
+    """Expand a glob-containing candidate path and return the first valid match."""
+    parts = candidate.parts
+    for i, part in enumerate(parts):
+        if "*" not in part:
+            continue
+        glob_parent = Path(*parts[:i + 1])
+        if not glob_parent.exists():
+            continue
+        remaining = Path(*parts[i + 1:])
+        for match in glob_parent.parent.glob(part):
+            resolved = match / remaining
+            if _is_valid_bundle_dir(resolved):
+                logger.info(f"Strategy E: Bundle dir from common path: {resolved}")
+                return resolved
+    return None
+
+
+def _strategy_common_paths() -> Optional[Path]:
+    """Strategy E: Check common installation paths."""
+    home = Path.home()
+    candidates = _common_path_candidates(home)
+
     for candidate in candidates:
         # Handle glob patterns (e.g., nvm versions/node/*)
         if "*" in str(candidate):
-            # Find the glob component and expand
-            parts = candidate.parts
-            for i, part in enumerate(parts):
-                if "*" in part:
-                    glob_parent = Path(*parts[:i + 1])
-                    if glob_parent.exists():
-                        for match in glob_parent.parent.glob(part):
-                            remaining = Path(*parts[i + 1:])
-                            resolved = match / remaining
-                            if _is_valid_bundle_dir(resolved):
-                                logger.info(f"Strategy E: Bundle dir from common path: {resolved}")
-                                return resolved
+            resolved = _resolve_glob_candidate(candidate)
+            if resolved:
+                return resolved
             continue
 
         if _is_valid_bundle_dir(candidate):

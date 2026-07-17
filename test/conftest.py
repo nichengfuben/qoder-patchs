@@ -27,7 +27,7 @@ from qoder_patchs.core.config import AppConfig
 def _disable_windows_stdout_wrapping():
     """Patch _get_utf8_stdout to return plain sys.stdout (no wrapping)."""
     with _mock_patch(
-        "qoder_patchs.cli.theme._get_utf8_stdout",
+        "qoder_patchs.cli.commands.theme._get_utf8_stdout",
         return_value=sys.stdout,
     ):
         yield

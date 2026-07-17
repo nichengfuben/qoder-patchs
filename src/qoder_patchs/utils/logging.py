@@ -27,6 +27,31 @@ _FILE_FORMAT = (
 )
 
 
+def _add_console_handler(verbose: bool) -> str:
+    """Add the colored console handler to Loguru and return its level."""
+    console_level = "DEBUG" if verbose else "INFO"
+    logger.add(
+        sys.stderr,
+        level=console_level,
+        format=_CONSOLE_FORMAT,
+        colorize=True,
+    )
+    return console_level
+
+
+def _add_file_handler(log_file: str) -> None:
+    """Add the rotating file handler to Loguru."""
+    logger.add(
+        log_file,
+        level="DEBUG",
+        format=_FILE_FORMAT,
+        rotation="10 MB",
+        retention=3,
+        encoding="utf-8",
+    )
+    logger.debug(f"File logging enabled: {log_file}")
+
+
 def setup_logging(
     verbose: bool = False,
     log_file: Optional[str] = None,
@@ -60,26 +85,10 @@ def setup_logging(
     # Remove all existing handlers (Loguru ships with a default stderr handler)
     logger.remove()
 
-    # Console handler: colored output to stderr
-    console_level = "DEBUG" if verbose else "INFO"
-    logger.add(
-        sys.stderr,
-        level=console_level,
-        format=_CONSOLE_FORMAT,
-        colorize=True,
-    )
+    console_level = _add_console_handler(verbose)
 
-    # File handler: rotating file with detailed format (optional)
     if log_file:
-        logger.add(
-            log_file,
-            level="DEBUG",
-            format=_FILE_FORMAT,
-            rotation="10 MB",
-            retention=3,
-            encoding="utf-8",
-        )
-        logger.debug(f"File logging enabled: {log_file}")
+        _add_file_handler(log_file)
 
     logger.debug(
         f"Logging configured: console={console_level}, "
