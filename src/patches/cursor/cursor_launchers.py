@@ -98,7 +98,7 @@ def sc_statusline_cmd(src_dir: Path) -> str:
         'if defined PATCHER_SRC (set "PYTHONPATH=%PATCHER_SRC%") else if defined AGENTCLI_PATCHS_SRC (set "PYTHONPATH=%AGENTCLI_PATCHS_SRC%") '
         f'else (set "PYTHONPATH={src}")\n'
         'if defined PATCHER_PYTHON (set "PY=%PATCHER_PYTHON%") else if defined AGENTCLI_PYTHON (set "PY=%AGENTCLI_PYTHON%") else (set "PY=python")\n'
-        '"%PY%" -X utf8 -m sc.run.status_store\n'
+        '"%PY%" -X utf8 -m sc.statusline_fast\n'
     )
 
 

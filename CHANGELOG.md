@@ -2,6 +2,12 @@
 
 本文件记录 Patcher（原 AgentCLI Patchs）的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.4.2
+
+- **statusLine**：恢复 `sc.statusline_fast` 兼容入口（2.4.0 误删后旧 `sc-statusline.cmd` 会刷新失败导致底栏冻在最后一帧）
+- statusLine 读 stdin 加短超时，避免管道未关闭时挂死
+- launcher 模板改回 `-m sc.statusline_fast`
+
 ## 2.4.1
 
 - **cursor-agent 测试**：以未打补丁的 `2026.07.23-e383d2b` 源码 gzip fixture 验证 hot-auth / statusline / footer / slash / ps1

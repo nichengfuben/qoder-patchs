@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -355,16 +356,45 @@ def display_state() -> Dict[str, Any]:
     return st
 
 
-def run() -> int:
-    width = 0
+def _read_stdin_width(timeout: float = 0.15) -> int:
+    """Read optional JSON payload from stdin without hanging if stdin stays open."""
+    if sys.stdin is None:
+        return 0
     try:
-        raw = sys.stdin.read()
-        if raw.strip():
-            payload = json.loads(raw)
-            if isinstance(payload, dict):
-                width = int(payload.get("render_width_chars") or 0)
+        if sys.stdin.isatty():
+            return 0
     except Exception:
-        pass
+        return 0
+    holder: list[str] = []
+
+    def _reader() -> None:
+        try:
+            holder.append(sys.stdin.read() or "")
+        except Exception:
+            holder.append("")
+
+    t = threading.Thread(target=_reader, daemon=True)
+    t.start()
+    t.join(timeout)
+    if not holder:
+        return 0
+    raw = holder[0]
+    if not raw.strip():
+        return 0
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return 0
+    if isinstance(payload, dict):
+        try:
+            return int(payload.get("render_width_chars") or 0)
+        except Exception:
+            return 0
+    return 0
+
+
+def run() -> int:
+    width = _read_stdin_width()
     st = display_state()
     if not st:
         st = {"action": "idle", "message": "尚未运行 sc auto", "_stale": True}
