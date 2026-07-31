@@ -18,7 +18,7 @@ def merge_status_line(command: str, *, padding: int = 1, update_ms: int = 1000) 
     data: Dict[str, Any] = {}
     if path.exists():
         try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
+            loaded = json.loads(path.read_text(encoding="utf-8-sig"))
             if isinstance(loaded, dict):
                 data = loaded
         except Exception:
@@ -27,8 +27,9 @@ def merge_status_line(command: str, *, padding: int = 1, update_ms: int = 1000) 
         "type": "command",
         "command": command,
         "padding": padding,
+        # 1s 读 json 刷新量条/时钟；用量 API 由 sc auto 5s 轮询，不在此命令里打
         "updateIntervalMs": update_ms,
-        "timeoutMs": 4000,
+        "timeoutMs": 2000,
     }
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
@@ -39,7 +40,7 @@ def status_line_command(path: Optional[Path] = None) -> Optional[str]:
     if not cfg.exists():
         return None
     try:
-        data = json.loads(cfg.read_text(encoding="utf-8"))
+        data = json.loads(cfg.read_text(encoding="utf-8-sig"))
         sl = data.get("statusLine") or {}
         return str(sl.get("command") or "") or None
     except Exception:

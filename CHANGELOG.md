@@ -2,6 +2,13 @@
 
 本文件记录 AgentCLI Patchs 的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.2.1
+
+- 多 AgentCLI 实例：`~/.cursor/sc_instances.json`（uuidv7 + 心跳）；>10s 未心跳自动下线
+- 仅最早上线且在线的实例作为 leader 跑 `auto` 换号/用量；其余监听保活；leader 同步写回用量
+- 修复多 `sc auto` 并发换号异常；`PULL`/`SWITCH` 不再并排展示旧账号 100% 条
+- `auth.json` 原子重写 + utime，配合热读补丁换号立即生效
+
 ## 2.2.0
 
 - 删除全部 Agent `/sc` slash；进入 `ag` 时由 `cursor-agent.cmd` 自动后台 `sc auto`

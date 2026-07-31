@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-"""Cursor Agent：auth 热读 + 启动自动 sc auto + statusline（无 /sc slash）。
+"""Cursor Agent：auth 热读 + 启动自动 sc auto + statusline + `/sc pull|usage`。
 
 逆向要点：
 1. AuthStorage 内存缓存 → 强制每次 readAuthData。
 2. 进入 agent 时由 cursor-agent.cmd 引导后台 ``sc auto``（换号监测）。
-3. 不再向 slash 面板注入 /sc。
+3. slash 面板注入 ``/sc``（调试：pull / usage）。
 """
 
 import json
@@ -24,8 +24,69 @@ from utils.paths import get_project_root
 MARKER = "/*agentcli-hot-auth*/"
 SLASH_MARKER = "/*agentcli-sc-slash*/"
 BOOT_MARKER = "REM agentcli-sc-auto-boot"
+STATUS_INTERVAL_MARKER = "/*agentcli-status-interval*/"
 
-# 原始短路缓存片段 → 强制读盘
+# use-status-line.ts：上游把 updateIntervalMs 当成 debounce，不是定时器。
+# 空闲时 updateSignal 不变 → statusLine 不刷新 → 时钟卡住。
+# 补 setInterval，按 updateIntervalMs（下限 300ms）真正轮询命令。
+_STATUS_INTERVAL_OLD = (
+    "return(0,l.useEffect)((()=>{var e;return b?(C(E.payload),()=>{var e;"
+    "C.cancel(),null===(e=m.current)||void 0===e||e.abort()}):(C.cancel(),"
+    "null===(e=m.current)||void 0===e||e.abort(),m.current=null,v.current=null,"
+    "void g(null))}),[E,C,b]),{text:p,padding:y}}"
+)
+_STATUS_INTERVAL_NEW = (
+    "return(0,l.useEffect)((()=>{var e;"
+    + STATUS_INTERVAL_MARKER
+    + "if(!b)return C.cancel(),null===(e=m.current)||void 0===e||e.abort(),"
+    "m.current=null,v.current=null,void g(null);"
+    "C(E.payload);const t=setInterval((()=>C(E.payload)),w);"
+    "return()=>{clearInterval(t),C.cancel(),null===(e=m.current)||void 0===e||e.abort()}"
+    "}),[E,C,b,w]),{text:p,padding:y}}"
+)
+
+# 紧挨 /mcp 之后、/plugin 之前注入 /sc（仅 pull / usage；异步 spawn 避免卡死 UI）
+_SLASH_ANCHOR = 'ue.push({id:"plugin",title:"Plugin"'
+_SLASH_INJECT = (
+    'ue.push({id:"sc",title:"SC",'
+    + SLASH_MARKER
+    + 'autoExecuteOnAccept:!0,description:"SC: pull / usage",'
+    'ghostText:"[pull|usage]",'
+    'boostedAlts:["starcursor"],'
+    'args:[{id:"subcommand",required:!0}],'
+    "getArgSuggestions:(e,t)=>{"
+    'const q=(t[0]||"").trim().toLowerCase();'
+    'const opts=[{value:"pull",description:"Pull token → auth.json",autoExecuteOnAccept:!0},'
+    '{value:"usage",description:"Refresh usage",autoExecuteOnAccept:!0}];'
+    "return q?opts.filter((e=>e.value.startsWith(q))):opts},"
+    "run:(e,t,ui)=>se(this,void 0,void 0,(function*(){var o,r;"
+    "null===(o=ui.clearInput)||void 0===o||o.call(ui);"
+    'const sub=(t[0]||"").trim().toLowerCase();'
+    'if(sub!=="pull"&&sub!=="usage"){'
+    'null===(r=ui.print)||void 0===r||r.call(ui,[[{text:"usage: /sc pull | /sc usage",color:"red"}]],{minLingerMs:4e3});'
+    'return void ui.insertText("")}'
+    "let s=\"\",i=1;try{"
+    'const cp=n("node:child_process"),path=n("node:path"),fs=n("node:fs");'
+    'const root=process.env.LOCALAPPDATA?path.join(process.env.LOCALAPPDATA,"cursor-agent"):"";'
+    'const scCmd=root?path.join(root,"sc.cmd"):"";'
+    'const env=Object.assign({},process.env,{PYTHONUTF8:"1",PYTHONIOENCODING:"utf-8"});'
+    "const result=yield new Promise((resolve)=>{let out=\"\",err=\"\",cmd,args,opts;"
+    "if(scCmd&&fs.existsSync(scCmd)){cmd=scCmd;args=[sub];opts={env,shell:!0}}"
+    'else{cmd=process.env.AGENTCLI_PYTHON||"python";args=["-m","sc",sub];opts={env,shell:!1}}'
+    "const p=cp.spawn(cmd,args,opts);"
+    'p.stdout&&p.stdout.on("data",(d)=>{out+=d.toString()});'
+    'p.stderr&&p.stderr.on("data",(d)=>{err+=d.toString()});'
+    'p.on("error",(e)=>resolve({status:1,text:String(e.message||e)}));'
+    'p.on("close",(code)=>resolve({status:null!=code?code:1,text:((out||"")+(err||"")).trim()||("exit "+String(code))}))'
+    "});"
+    "s=result.text;i=result.status}catch(e){s=String(null!=e.message?e.message:e);i=1}"
+    'const lines=s.split(/\\r?\\n/).map((e=>[{text:e,color:i?"red":"green"}]));'
+    'null===(r=ui.print)||void 0===r||r.call(ui,lines.length?lines:[[{text:"(no output)",dim:!0}]],'
+    '{minLingerMs:8e3}),ui.insertText("")}))}),'
+    + _SLASH_ANCHOR
+)
+
+# 原始短路缓存片段 → 强制读盘（file store + getAllCredentials + 强制非 memory 走 file）
 _REPLACEMENTS: tuple[tuple[str, str], ...] = (
     (
         "getAccessToken(){return o(this,void 0,void 0,(function*(){var e;if(this.cachedAccessToken)return this.cachedAccessToken;const t=yield this.readAuthData();return(null==t?void 0:t.accessToken)?(this.cachedAccessToken=t.accessToken,this.cachedRefreshToken=null!==(e=t.refreshToken)&&void 0!==e?e:null,t.accessToken):void 0}))}",
@@ -39,11 +100,54 @@ _REPLACEMENTS: tuple[tuple[str, str], ...] = (
         "getApiKey(){return o(this,void 0,void 0,(function*(){if(this.cachedApiKey)return this.cachedApiKey;const e=yield this.readAuthData();return(null==e?void 0:e.apiKey)?(this.cachedApiKey=e.apiKey,e.apiKey):void 0}))}",
         "getApiKey(){return o(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const e=yield this.readAuthData();return(null==e?void 0:e.apiKey)?(this.cachedApiKey=e.apiKey,e.apiKey):(this.cachedApiKey=null,void 0)}))}",
     ),
+    (
+        "getAllCredentials(){return o(this,void 0,void 0,(function*(){if(null!==this.cachedAccessToken&&null!==this.cachedRefreshToken)return{accessToken:this.cachedAccessToken||void 0,refreshToken:this.cachedRefreshToken||void 0,apiKey:this.cachedApiKey||void 0};const e=yield this.readAuthData();return e?(this.cachedAccessToken=e.accessToken||null,this.cachedRefreshToken=e.refreshToken||null,this.cachedApiKey=e.apiKey||null,{accessToken:e.accessToken||void 0,refreshToken:e.refreshToken||void 0,apiKey:e.apiKey||void 0}):{accessToken:void 0,refreshToken:void 0,apiKey:void 0}}))}",
+        "getAllCredentials(){return o(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const e=yield this.readAuthData();return e?(this.cachedAccessToken=e.accessToken||null,this.cachedRefreshToken=e.refreshToken||null,this.cachedApiKey=e.apiKey||null,{accessToken:e.accessToken||void 0,refreshToken:e.refreshToken||void 0,apiKey:e.apiKey||void 0}):(this.cachedAccessToken=null,this.cachedRefreshToken=null,this.cachedApiKey=null,{accessToken:void 0,refreshToken:void 0,apiKey:void 0})}))}",
+    ),
+    (
+        'function A(e){var t;const n=null!==(t=e.store)&&void 0!==t?t:"default";return"memory"===n?new m:"file"===n?new a(e.domain):"darwin"===(0,r.platform)()?new u(e.domain):new a(e.domain)}',
+        'function A(e){var t;const n=null!==(t=e.store)&&void 0!==t?t:"default";return"memory"===n?new m:new a(e.domain)/*agentcli-hot-auth*/}',
+    ),
 )
 
 _BOOT_BLOCK = f"""{BOOT_MARKER}
-REM Start sc auto (detached) before launching agent UI
-if exist "%~dp0sc.cmd" start "" /B "%~dp0sc.cmd" auto
+REM Start sc auto via helper script (avoids cmd quoting bugs); parent=cmd.exe
+if exist "%~dp0sc-autoboot.ps1" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0sc-autoboot.ps1"
+"""
+
+_SC_AUTOBOOT_PS1 = r"""$ErrorActionPreference = "Stop"
+$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$sc = Join-Path $root "sc.cmd"
+if (-not (Test-Path -LiteralPath $sc)) { exit 0 }
+try {
+  $pp = (Get-CimInstance Win32_Process -Filter ("ProcessId=" + $PID)).ParentProcessId
+} catch {
+  $pp = 0
+}
+$args = @("auto", "--fg")
+if ($pp -gt 0) { $args += @("--parent", "$pp") }
+Start-Process -FilePath $sc -ArgumentList $args -WindowStyle Hidden | Out-Null
+"""
+
+# Ctrl+C 时避免 "Terminate batch job (Y/N)?"：endlocal 后脱离 batch 再等 PowerShell
+_AG_CMD = r"""@echo off
+setlocal EnableExtensions
+set "CURSOR_INVOKED_AS=%~nx0"
+set "SCRIPT_DIR=%~dp0"
+if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
+set "_PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+set "_SCRIPT=%SCRIPT_DIR%\cursor-agent.ps1"
+REM agentcli-no-terminate-prompt
+endlocal & set "CURSOR_INVOKED_AS=%~nx0" & "%_PS%" -NoProfile -ExecutionPolicy Bypass -File "%_SCRIPT%" %*
+"""
+
+_CURSOR_AGENT_CMD_TAIL = r"""set "CURSOR_INVOKED_AS=%~nx0"
+set "SCRIPT_DIR=%~dp0"
+if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
+set "_PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+set "_SCRIPT=%SCRIPT_DIR%\cursor-agent.ps1"
+REM agentcli-no-terminate-prompt
+endlocal & set "CURSOR_INVOKED_AS=%~nx0" & "%_PS%" -NoProfile -ExecutionPolicy Bypass -File "%_SCRIPT%" %*
 """
 
 _SC_CMD = r"""@echo off
@@ -55,13 +159,14 @@ set "SCRIPT_DIR=%~dp0"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%sc.ps1" %*
 """
 
+# statusLine 每 1s 调一次：直调极速模块，禁止套 PowerShell / 全量 sc.cli
 _SC_STATUSLINE_CMD = r"""@echo off
 setlocal
-chcp 65001 >nul
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
-set "SCRIPT_DIR=%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%sc.ps1" statusline
+if defined AGENTCLI_PATCHS_SRC (set "PYTHONPATH=%AGENTCLI_PATCHS_SRC%") else (set "PYTHONPATH=X:\Project\Public\AgentCLI-Patchs\src")
+if defined AGENTCLI_PYTHON (set "PY=%AGENTCLI_PYTHON%") else (set "PY=python")
+"%PY%" -X utf8 -m sc.statusline_fast
 """
 
 # client.py 旁默认配置路径（复制到 %APPDATA%\Cursor\config.json）
@@ -116,7 +221,7 @@ def ensure_sc_config_from_client(*, force: bool = False) -> Optional[Path]:
 
 
 class CursorAgentPatch(PatchBase):
-    """Hot-reload auth + auto-boot sc auto + statusline（无 slash）。"""
+    """Hot-reload auth + auto-boot sc auto + /sc slash + statusline。"""
 
     @property
     def metadata(self) -> PatchMetadata:
@@ -125,20 +230,35 @@ class CursorAgentPatch(PatchBase):
             display_name="Cursor Agent 热更新与自动换号",
             description=(
                 "去掉 AuthStorage 内存缓存；启动 agent 时自动后台 sc auto；"
-                "安装 statusline；config 与 auth.json 同级。"
+                "注入 /sc pull|usage；安装 statusline；"
+                "修补 use-status-line 按 updateIntervalMs 定时刷新（上游仅 debounce）。"
             ),
-            version="2.0.0",
+            version="2.2.0",
             author="nichengfuben",
             target_files=(
                 "index.js",
-                "cursor-agent.cmd",
-                "sc.cmd",
-                "sc.ps1",
-                "sc-statusline.cmd",
+                "*.index.js",
             ),
-            tags=("cursor-agent", "auth", "hot-reload", "sc", "auto", "statusline"),
+            tags=("cursor-agent", "auth", "hot-reload", "sc", "auto", "statusline", "slash"),
             reversible=True,
         )
+
+    def validate(self, bundle_dir: Path) -> list[str]:
+        """校验 cursor-agent 安装目录（不依赖 Qoder bundle_dir）。"""
+        issues: list[str] = []
+        target = self._resolve_bundle(bundle_dir)
+        if target is None:
+            issues.append("未找到 %LOCALAPPDATA%\\cursor-agent\\versions\\*\\index.js")
+            return issues
+        index = self._index_js(target)
+        if not index.exists():
+            issues.append(f"Target file does not exist: {index}")
+        elif not index.is_file():
+            issues.append(f"Target is not a file: {index}")
+        root = find_cursor_agent_root()
+        if root is None:
+            issues.append("未找到 %LOCALAPPDATA%\\cursor-agent")
+        return issues
 
     def _index_js(self, bundle_dir: Path) -> Path:
         return bundle_dir / "index.js"
@@ -170,15 +290,20 @@ class CursorAgentPatch(PatchBase):
         root = find_cursor_agent_root()
         sc_ok = bool(root and (root / "sc.cmd").exists() and (root / "sc-statusline.cmd").exists())
         hot_ok = MARKER in text
+        interval_ok = any(
+            STATUS_INTERVAL_MARKER in p.read_text(encoding="utf-8", errors="ignore")
+            for p in target.glob("*.index.js")
+            if p.is_file()
+        )
         boot_ok = False
         if root is not None:
             boot_cmd = root / "cursor-agent.cmd"
             if boot_cmd.exists():
                 boot_ok = BOOT_MARKER in boot_cmd.read_text(encoding="utf-8", errors="ignore")
-        slash_gone = len(self._slash_chunks(target)) == 0
-        if hot_ok and sc_ok and boot_ok and slash_gone:
+        slash_ok = len(self._slash_chunks(target)) > 0
+        if hot_ok and sc_ok and boot_ok and slash_ok and interval_ok:
             return PatchStatus.APPLIED
-        if hot_ok or sc_ok or boot_ok:
+        if hot_ok or sc_ok or boot_ok or slash_ok or interval_ok:
             return PatchStatus.PARTIAL
         return PatchStatus.NOT_APPLIED
 
@@ -199,8 +324,100 @@ class CursorAgentPatch(PatchBase):
         index.write_text(modified, encoding="utf-8")
         return hits, index, bak
 
+    def _patch_statusline_interval(
+        self, bundle_dir: Path, dry_run: bool
+    ) -> tuple[int, list[Path], list[Path]]:
+        """把 use-status-line 的 debounce 改成按 updateIntervalMs 的 setInterval。"""
+        files: list[Path] = []
+        backups: list[Path] = []
+        hits = 0
+        for chunk in bundle_dir.glob("*.index.js"):
+            try:
+                text = chunk.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            if STATUS_INTERVAL_MARKER in text:
+                hits += 1
+                continue
+            if _STATUS_INTERVAL_OLD not in text:
+                continue
+            if dry_run:
+                hits += 1
+                continue
+            bak = chunk.with_suffix(chunk.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
+            bak.write_text(text, encoding="utf-8")
+            chunk.write_text(
+                text.replace(_STATUS_INTERVAL_OLD, _STATUS_INTERVAL_NEW, 1),
+                encoding="utf-8",
+            )
+            files.append(chunk)
+            backups.append(bak)
+            hits += 1
+            logger.info("Patched statusLine interval in {}", chunk.name)
+        return hits, files, backups
+
+    def _strip_statusline_interval(
+        self, bundle_dir: Path, dry_run: bool
+    ) -> tuple[int, list[Path]]:
+        files: list[Path] = []
+        hits = 0
+        for chunk in bundle_dir.glob("*.index.js"):
+            try:
+                text = chunk.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            if _STATUS_INTERVAL_NEW not in text and STATUS_INTERVAL_MARKER not in text:
+                continue
+            if dry_run:
+                hits += 1
+                continue
+            restored = text.replace(_STATUS_INTERVAL_NEW, _STATUS_INTERVAL_OLD, 1)
+            if restored == text:
+                continue
+            chunk.write_text(restored, encoding="utf-8")
+            files.append(chunk)
+            hits += 1
+        return hits, files
+
+    def _inject_slash(self, bundle_dir: Path, dry_run: bool) -> tuple[int, list[Path], list[Path]]:
+        """注入 / 更新 /sc slash（仅 pull|usage；异步 spawn）。"""
+        files: list[Path] = []
+        backups: list[Path] = []
+        hits = 0
+        for chunk in bundle_dir.glob("*.index.js"):
+            try:
+                text = chunk.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            if _SLASH_ANCHOR not in text and 'ue.push({id:"sc"' not in text:
+                continue
+            # 已有旧注入：先剥掉再写入新版
+            working = text
+            if SLASH_MARKER in working or 'ue.push({id:"sc"' in working:
+                start = working.find('ue.push({id:"sc"')
+                end = working.find('ue.push({id:"plugin"', start) if start >= 0 else -1
+                if start >= 0 and end > start:
+                    working = working[:start] + working[end:]
+            if _SLASH_ANCHOR not in working:
+                continue
+            if _SLASH_INJECT in working:
+                hits += 1
+                continue
+            hits += 1
+            if dry_run:
+                continue
+            new_text = working.replace(_SLASH_ANCHOR, _SLASH_INJECT, 1)
+            self._assert_js_syntax(chunk, new_text)
+            bak = chunk.with_suffix(chunk.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
+            bak.write_text(text, encoding="utf-8")
+            backups.append(bak)
+            chunk.write_text(new_text, encoding="utf-8")
+            files.append(chunk)
+            logger.info("Injected /sc slash (pull|usage) into {}", chunk)
+        return hits, files, backups
+
     def _strip_slash(self, bundle_dir: Path, dry_run: bool) -> tuple[int, list[Path], list[Path]]:
-        """移除历史 /sc slash 注入。"""
+        """移除历史 /sc slash 注入（rollback）。"""
         files: list[Path] = []
         backups: list[Path] = []
         hits = 0
@@ -254,23 +471,49 @@ class CursorAgentPatch(PatchBase):
         if not cmd.exists():
             return False, None, None
         text = cmd.read_text(encoding="utf-8", errors="ignore")
-        if BOOT_MARKER in text:
-            return True, None, None
-        # 插在 @echo off / setlocal 之后
-        lines = text.splitlines(keepends=True)
-        insert_at = 0
-        for i, line in enumerate(lines[:8]):
-            if line.strip().lower().startswith("@echo") or line.strip().lower().startswith("setlocal"):
-                insert_at = i + 1
         boot = _BOOT_BLOCK if _BOOT_BLOCK.endswith("\n") else _BOOT_BLOCK + "\n"
-        new_text = "".join(lines[:insert_at]) + "\n" + boot + "".join(lines[insert_at:])
+        # 完整重写：boot + no-terminate 启动尾（避免 Terminate batch job）
+        new_text = (
+            "@echo off\r\n"
+            "setlocal EnableExtensions\r\n"
+            "\r\n"
+            + boot.replace("\n", "\r\n")
+            + "\r\n"
+            + _CURSOR_AGENT_CMD_TAIL.replace("\n", "\r\n")
+        )
+        if text.replace("\r\n", "\n").strip() == new_text.replace("\r\n", "\n").strip():
+            return True, None, None
         if dry_run:
             return True, None, None
         bak = cmd.with_suffix(cmd.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
         bak.write_text(text, encoding="utf-8")
-        cmd.write_text(new_text, encoding="utf-8")
-        logger.info("Patched auto-boot into {}", cmd)
+        cmd.write_text(new_text, encoding="utf-8", newline="")
+        logger.info("Patched cursor-agent.cmd boot+no-terminate → {}", cmd)
         return True, cmd, bak
+
+    def _patch_launchers(self, root: Path, dry_run: bool) -> tuple[bool, list[Path], list[Path]]:
+        """写入 ag.cmd / agent.cmd（no-terminate），与 cursor-agent.cmd 对齐。"""
+        files: list[Path] = []
+        backups: list[Path] = []
+        wanted = _AG_CMD.replace("\n", "\r\n")
+        changed = False
+        for name in ("ag.cmd", "agent.cmd"):
+            path = root / name
+            if not path.exists():
+                continue
+            old = path.read_text(encoding="utf-8", errors="ignore")
+            if old.replace("\r\n", "\n").strip() == _AG_CMD.strip():
+                continue
+            changed = True
+            if dry_run:
+                continue
+            bak = path.with_suffix(path.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
+            bak.write_text(old, encoding="utf-8")
+            backups.append(bak)
+            path.write_text(wanted, encoding="utf-8", newline="")
+            files.append(path)
+            logger.info("Patched {} no-terminate", name)
+        return changed or bool(files), files, backups
 
     def apply(self, bundle_dir: Path, dry_run: bool = False) -> PatchResult:
         start = time.monotonic()
@@ -287,11 +530,15 @@ class CursorAgentPatch(PatchBase):
         content = index.read_text(encoding="utf-8", errors="ignore")
         hot_hits, _, _ = self._patch_hot_auth(index, dry_run=True)
         root = find_cursor_agent_root()
+        interval_hits, _, _ = self._patch_statusline_interval(target, dry_run=True)
 
         if dry_run:
             return PatchResult(
                 status=PatchStatus.APPLIED if hot_hits >= 1 or MARKER in content else PatchStatus.FAILED,
-                message=f"[dry-run] hot-auth hits={hot_hits}, would install sc/auto-boot at {root}",
+                message=(
+                    f"[dry-run] hot-auth hits={hot_hits}, status-interval={interval_hits}, "
+                    f"would install sc/auto-boot at {root}"
+                ),
                 patch_name=self.metadata.name,
                 duration_ms=int((time.monotonic() - start) * 1000),
             )
@@ -314,9 +561,13 @@ class CursorAgentPatch(PatchBase):
             backups.append(hot_bak)
             logger.info("Patched hot-auth in {}", index)
 
-        stripped, slash_files, slash_baks = self._strip_slash(target, dry_run=False)
+        stripped, slash_files, slash_baks = self._inject_slash(target, dry_run=False)
         files.extend(slash_files)
         backups.extend(slash_baks)
+
+        iv_hits, iv_files, iv_baks = self._patch_statusline_interval(target, dry_run=False)
+        files.extend(iv_files)
+        backups.extend(iv_baks)
 
         cfg_copied = ensure_sc_config_from_client(force=True)
         if cfg_copied:
@@ -327,27 +578,33 @@ class CursorAgentPatch(PatchBase):
             cmd = root / "sc.cmd"
             ps1 = root / "sc.ps1"
             sl_cmd = root / "sc-statusline.cmd"
+            boot_ps1 = root / "sc-autoboot.ps1"
             cmd.write_text(_SC_CMD, encoding="utf-8")
             ps1.write_text(_sc_ps1(src), encoding="utf-8")
             sl_cmd.write_text(_SC_STATUSLINE_CMD, encoding="utf-8")
-            files.extend([cmd, ps1, sl_cmd])
+            boot_ps1.write_text(_SC_AUTOBOOT_PS1, encoding="utf-8")
+            files.extend([cmd, ps1, sl_cmd, boot_ps1])
             boot_ok, boot_file, boot_bak = self._patch_boot_cmd(root, dry_run=False)
             if boot_file:
                 files.append(boot_file)
             if boot_bak:
                 backups.append(boot_bak)
+            ag_ok, ag_files, ag_baks = self._patch_launchers(root, dry_run=False)
+            files.extend(ag_files)
+            backups.extend(ag_baks)
             cfg_path = merge_status_line(str(sl_cmd.resolve()))
             files.append(cfg_path)
             logger.info("Wired statusLine → {}", cfg_path)
         else:
             boot_ok = False
+            ag_ok = False
 
         return PatchResult(
             status=PatchStatus.APPLIED,
             message=(
-                f"hot-auth + auto-boot + statusline 已应用 "
-                f"(hot={hot_hits}, slash_removed={stripped}, boot={boot_ok}, "
-                f"config={cfg_copied}, root={root})"
+                f"hot-auth + auto-boot + /sc slash + statusline 已应用 "
+                f"(hot={hot_hits}, slash={stripped}, interval={iv_hits}, boot={boot_ok}, "
+                f"launchers={ag_ok}, config={cfg_copied}, root={root})"
             ),
             patch_name=self.metadata.name,
             files_modified=files,
@@ -385,6 +642,8 @@ class CursorAgentPatch(PatchBase):
             files.append(index)
         _, slash_files, _ = self._strip_slash(target, dry_run=False)
         files.extend(slash_files)
+        _, iv_files = self._strip_statusline_interval(target, dry_run=False)
+        files.extend(iv_files)
         root = find_cursor_agent_root()
         if root:
             cmd = root / "cursor-agent.cmd"
@@ -420,14 +679,14 @@ class CursorAgentPatch(PatchBase):
                         out.append(line)
                     cmd.write_text("".join(out), encoding="utf-8")
                     files.append(cmd)
-            for name in ("sc.cmd", "sc.ps1", "sc-statusline.cmd"):
+            for name in ("sc.cmd", "sc.ps1", "sc-statusline.cmd", "sc-autoboot.ps1"):
                 p = root / name
                 if p.exists():
                     p.unlink()
                     files.append(p)
         return PatchResult(
             status=PatchStatus.NOT_APPLIED,
-            message="已回滚 hot-auth、auto-boot、slash，并移除 sc 启动器",
+            message="已回滚 hot-auth、status-interval、auto-boot、slash，并移除 sc 启动器",
             patch_name=self.metadata.name,
             files_modified=files,
             duration_ms=int((time.monotonic() - start) * 1000),

@@ -11,10 +11,10 @@ from sc.paths import config_json_path, cursor_config_dir
 DEFAULT_CONFIG: Dict[str, Any] = {
     "base_url": "http://starcursor.airoe.cn",
     "api_keys": [],
-    "switch_threshold": 45,
+    "switch_threshold": 80,
     "usage_threshold": 95.0,
-    "poll_interval": 30,
-    "status_refresh_interval": 60,
+    "poll_interval": 5,
+    "status_refresh_interval": 5,
     "request_timeout": 20,
     "max_retry_per_pull": 3,
 }

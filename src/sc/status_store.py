@@ -28,12 +28,27 @@ def read_status() -> Dict[str, Any]:
 
 
 def write_status(**fields: Any) -> None:
-    """合并写入状态。``fields`` 中值为 ``None`` 的键会被跳过（不覆盖）。"""
+    """合并写入状态。
+
+    默认跳过值为 ``None`` 的键；下列键传入 ``None`` 时会**清除**残留，
+    避免 leader/auto 下线后 statusline 仍显示僵尸状态。
+    """
+    clearable = {
+        "leader_id",
+        "auto_pid",
+        "last_error",
+        "plan_message",
+        "card",
+        "email",
+    }
     cursor_config_dir().mkdir(parents=True, exist_ok=True)
     cur = read_status()
     for k, v in fields.items():
-        if v is not None:
-            cur[k] = v
+        if v is None:
+            if k in clearable:
+                cur.pop(k, None)
+            continue
+        cur[k] = v
     cur["updated_at"] = time.time()
     cur["updated_iso"] = time.strftime("%Y-%m-%d %H:%M:%S")
     cur["pid"] = os.getpid()
@@ -56,14 +71,14 @@ def _pct(v: Any) -> str:
         return str(v)
 
 
-def _bar(pct: Any, width: int = 10) -> str:
+def _bar(pct: Any, width: int = 30) -> str:
+    """对齐 Common/client.py：`[████…░░░░…]`。"""
     try:
         p = max(0.0, min(100.0, float(pct)))
     except Exception:
-        return "[" + ("." * width) + "]"
-    filled = int(round(width * p / 100.0))
-    # ASCII：避免 Windows GBK 控制台无法显示 ░█
-    return "[" + ("#" * filled) + ("." * (width - filled)) + "]"
+        return "[" + ("░" * width) + "]"
+    filled = int(width * p / 100.0)
+    return "[" + ("█" * filled) + ("░" * (width - filled)) + "]"
 
 
 def _short_email(email: str, max_len: int = 18) -> str:
@@ -116,7 +131,12 @@ def format_status_lines(
     model: str = "",
     width: int = 0,
 ) -> list[str]:
-    """紧凑一行（必要时两行）：完整但不占空间，突出刷新额度 / 换号。"""
+    """紧凑一行：``SC OK [████…] 66.0% #126 19:04:22 Auto``。
+
+    - 用量 / # 来自 json（leader auto 写入）
+    - 时间始终为**当前时刻**实时时钟
+    - 模型为调用方传入（用户所选）
+    """
     d = data if data is not None else read_status()
     dim = "\033[90m"
     cyan = "\033[36m"
@@ -127,67 +147,66 @@ def format_status_lines(
     reset = "\033[0m"
 
     action = str(d.get("action") or "idle")
-    auto_on = bool(d.get("auto_running"))
-    email = _short_email(str(d.get("email") or "-"))
-    membership = str(d.get("membership") or d.get("card") or "-")
-    if membership == "-":
-        membership = str(d.get("card") or "-")
     total = d.get("total_pct")
-    auto_pct = d.get("auto_pct")
-    api_pct = d.get("api_pct")
-    poll_n = d.get("poll_n")
+    tick_n = d.get("usage_seq")
+    if tick_n is None:
+        tick_n = d.get("poll_n")
     threshold = d.get("usage_threshold")
     err = str(d.get("last_error") or "").strip()
     msg = str(d.get("message") or "").strip()
     badge, badge_color = _plan_badge(d)
 
-    auto_mark = f"{green}A{reset}" if auto_on else f"{dim}-{reset}"
     bar = _bar(total)
-    usage = f"{_pct(total)} {bar}"
-    detail = f"a{_pct(auto_pct)} p{_pct(api_pct)}"
-    acct = f"{email}" + (f"/{membership}" if membership and membership != "-" else "")
-    tick = f"#{poll_n}" if poll_n is not None else ""
+    usage = f"{bar} {_pct(total)}"
+    tick = f"#{tick_n}" if tick_n is not None else ""
+    # 实时时钟（不读 json 里的 usage_at）
+    clock = time.strftime("%H:%M:%S")
 
-    # ── 换号 / 拉号：高亮一行 ──────────────────────────────────────────
+    # ── 换号 / 拉号：无量条、无账号 ───────────────────────────────────
     if action in ("pulling", "switching"):
         label = "SWITCH" if action == "switching" else "PULL"
-        line = (
-            f"{cyan}SC{reset} {bold}{yellow}{label}{reset} "
-            f"{usage} thr>={threshold if threshold is not None else 95}% "
-            f"→ {acct}"
-        )
+        line = f"{cyan}SC{reset} {bold}{yellow}{label}{reset}"
+        if threshold is not None:
+            line += f" thr>={threshold}%"
         if tick:
-            line += f" {dim}{tick}{reset}"
+            line += f" {tick}"
+        line += f" {dim}{clock}{reset}"
         if msg:
-            # 只留短事件语
-            short = msg if len(msg) <= 36 else msg[:35] + "…"
+            short = msg if len(msg) <= 28 else msg[:27] + "…"
             line += f" {yellow}{short}{reset}"
         lines = [line]
-    # ── 刷新额度（polling）：突出 ↻ ───────────────────────────────────
-    elif action == "polling":
-        line = (
-            f"{cyan}SC{reset} {auto_mark} {green}↻{reset}{tick or ''} "
-            f"{badge_color}{badge}{reset} {usage} {dim}{detail}{reset} {acct}"
-        )
-        lines = [line]
-    # ── 错误：一行 ────────────────────────────────────────────────────
+    # ── 硬错误（非 SSL/网络）：ERR + 短因 ─────────────────────────────
     elif action == "error":
         err_s = err or msg or "error"
-        if len(err_s) > 42:
-            err_s = err_s[:41] + "…"
-        line = (
-            f"{cyan}SC{reset} {auto_mark} {red}ERR{reset} {usage} {acct} "
-            f"{red}{err_s}{reset}"
-        )
-        lines = [line]
-    # ── 常态：一行完整摘要 ────────────────────────────────────────────
+        low = err_s.lower()
+        if (
+            "urlopen" in low
+            or "unexpected_eof" in low
+            or "ssl" in low
+            or err_s
+            in ("SSL断连", "SSL失败", "超时", "网络错误", "连接重置", "DNS失败")
+        ):
+            line = f"{cyan}SC{reset} {badge_color}{badge}{reset} {usage}"
+            if tick:
+                line += f" {tick}"
+            line += f" {dim}{clock}{reset}"
+            if model:
+                line += f" {dim}{model}{reset}"
+            lines = [line]
+        else:
+            if len(err_s) > 20:
+                err_s = err_s[:19] + "…"
+            line = f"{cyan}SC{reset} {red}ERR{reset} {red}{err_s}{reset}"
+            if tick:
+                line += f" {tick}"
+            line += f" {dim}{clock}{reset}"
+            lines = [line]
+    # ── 常态：SC OK [bar] pct #n HH:MM:SS Model ───────────────────────
     else:
-        line = (
-            f"{cyan}SC{reset} {auto_mark} {badge_color}{badge}{reset} "
-            f"{usage} {dim}{detail}{reset} {acct}"
-        )
+        line = f"{cyan}SC{reset} {badge_color}{badge}{reset} {usage}"
         if tick:
-            line += f" {dim}{tick}{reset}"
+            line += f" {tick}"
+        line += f" {dim}{clock}{reset}"
         if model:
             line += f" {dim}{model}{reset}"
         lines = [line]

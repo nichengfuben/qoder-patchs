@@ -61,19 +61,20 @@ python main.py rollback cursor-agent
 逆向 `%LOCALAPPDATA%\cursor-agent\`：
 
 - **Auth 热读**（`index.js`）：去掉缓存短路，外部改写 `%APPDATA%\Cursor\auth.json` 立即生效
-- **启动自动换号**：改写 `cursor-agent.cmd`，进入 `ag` 时后台启动 `sc auto`（**无 /sc slash 命令**）
+- **statusLine**：leader auto 实时写 `sc_instances.json`；任意实例只读该 json 刷新用量/`#`；**时间**为当前时刻实时时钟；**模型**为用户所选（stdin）
 - **配置**：从 `X:\Project\Common\Common\config.json`（client.py 同目录）复制到 `%APPDATA%\Cursor\config.json`
-- **statusline**：提示符上一行显示额度 / 换号状态
+- **statusline**：提示符上一行显示额度 / 换号状态（`AxN` 表示 N 个在线实例）
 
 应用后**重启一次** `ag`。
 
 ### 配置与状态
 
-`config.json` 与 `auth.json` 同级：`%APPDATA%\Cursor\`
+`config.json` / `auth.json` / `sc_status.json`：`%APPDATA%\Cursor\`  
+实例心跳：`%USERPROFILE%\.cursor\sc_instances.json`
 
 ```bash
-sc status          # 查看配置/用量/auto 进程
-sc auto stop       # 停止后台换号
+sc status          # 配置 / 在线实例 / 用量 / leader
+sc auto stop       # 停止全部实例
 sc pull            # 手动拉号（一般不需要）
 ```
 
@@ -81,11 +82,11 @@ sc pull            # 手动拉号（一般不需要）
 
 apply 后写入 `~/.cursor/cli-config.json` 的 `statusLine`。一行紧凑状态：
 
-- 常态：`SC A OK 67.2% [######....] a12.0% p55.0% user@x/pro #12`
+- 常态：`SC A OK [████…░░░░] 38.0% a12.0% p55.0% user@x/pro #12`
 - 刷新：`SC A ↻#12 OK …`
-- 换号：`SC SWITCH 96.0% … thr>=95% → …`
+- 换号：`SC SWITCH thr>=95% → …`（不展示旧账号满额条）
 
-`A`=auto 开，`-`=关。详情用 `sc status`。
+`A`=有 leader，`-`=无；多开时 `Ax2`。详情用 `sc status`。
 
 **重启一次 `ag`** 后 statusLine 与 auto-boot 生效。若你已有自定义 statusLine，apply 会覆盖 `statusLine` 字段（其它 cli-config 项保留）。
 ---
