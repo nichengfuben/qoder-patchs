@@ -81,6 +81,7 @@ python main.py rollback cursor-agent
 /sc help
 /sc pull
 /sc usage
+/sc status
 /sc auto
 ```
 
@@ -94,6 +95,23 @@ sc auto                        # 后台轮询，超限自动换号
 sc auto stop
 ```
 
+### Statusline（完整 sc 状态栏）
+
+apply `cursor-agent` 后会：
+
+1. 安装 `%LOCALAPPDATA%\cursor-agent\sc-statusline.cmd`
+2. 写入/合并 `~/.cursor/cli-config.json` 的 `statusLine`，指向上述命令
+3. 运行时把完整状态写入 `%APPDATA%\Cursor\sc_status.json`（与 auth 同级）
+
+Agent 提示符上方会显示约 3 行：
+
+- auto 开/关、当前动作（polling/pulling/switching）、轮询序号、阈值
+- 账号 email / card / uid、用量 total/auto/api
+- 正在做什么的 message、上次更新时间、错误
+
+`/sc status` 会刷新并打印同样信息。`sc auto` 日志另写 `sc_auto.log`。
+
+**重启一次 `ag`** 后 statusLine 生效。若你已有自定义 statusLine，apply 会覆盖 `statusLine` 字段（其它 cli-config 项保留）。
 ---
 
 ## 配置（补丁管理器本身）

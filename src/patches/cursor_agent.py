@@ -18,6 +18,7 @@ from typing import Optional
 from loguru import logger
 
 from core.patch_base import PatchBase, PatchMetadata, PatchResult, PatchStatus
+from sc.cli_config import merge_status_line
 from sc.paths import find_cursor_agent_bundle, find_cursor_agent_root
 from utils.paths import get_project_root
 
@@ -58,6 +59,7 @@ _SLASH_INJECT = (
     '{value:"usage",description:"Show usage",autoExecuteOnAccept:!0},'
     '{value:"token",description:"Show local token",autoExecuteOnAccept:!0},'
     '{value:"status",description:"Show status",autoExecuteOnAccept:!0},'
+    '{value:"statusline",description:"Print statusline text"},'
     '{value:"addkey",description:"Add API key"},'
     '{value:"auto",description:"Background poll / auto stop"},'
     '{value:"help",description:"Show help",autoExecuteOnAccept:!0}];'
@@ -90,6 +92,12 @@ set "SCRIPT_DIR=%~dp0"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%sc.ps1" %*
 """
 
+_SC_STATUSLINE_CMD = r"""@echo off
+setlocal
+set "SCRIPT_DIR=%~dp0"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%sc.ps1" statusline
+"""
+
 
 def _sc_ps1(src_dir: Path) -> str:
     # 安装时写入绝对 PYTHONPATH，保证未 pip install 也能 python -m sc
@@ -113,12 +121,13 @@ class CursorAgentPatch(PatchBase):
             display_name="Cursor Agent 热更新与 /sc 便携换号",
             description=(
                 "去掉 AuthStorage 内存缓存；向 Agent slash 面板注入 /sc；"
-                "安装根部署 sc.cmd。config.json 与 auth.json 同级（%APPDATA%\\Cursor\\）。"
+                "安装 sc.cmd + statusline（完整 sc 状态栏）；"
+                "config/status 与 auth.json 同级（%APPDATA%\\Cursor\\）。"
             ),
-            version="1.1.0",
+            version="1.2.0",
             author="nichengfuben",
-            target_files=("index.js", "*.index.js", "sc.cmd", "sc.ps1"),
-            tags=("cursor-agent", "auth", "hot-reload", "sc", "slash"),
+            target_files=("index.js", "*.index.js", "sc.cmd", "sc.ps1", "sc-statusline.cmd"),
+            tags=("cursor-agent", "auth", "hot-reload", "sc", "slash", "statusline"),
             reversible=True,
         )
 
@@ -146,7 +155,7 @@ class CursorAgentPatch(PatchBase):
             return PatchStatus.UNKNOWN
         text = index.read_text(encoding="utf-8", errors="ignore")
         root = find_cursor_agent_root()
-        sc_ok = bool(root and (root / "sc.cmd").exists())
+        sc_ok = bool(root and (root / "sc.cmd").exists() and (root / "sc-statusline.cmd").exists())
         hot_ok = MARKER in text
         slash_ok = any(
             SLASH_MARKER in p.read_text(encoding="utf-8", errors="ignore")
@@ -283,14 +292,19 @@ class CursorAgentPatch(PatchBase):
             src = get_project_root() / "src"
             cmd = root / "sc.cmd"
             ps1 = root / "sc.ps1"
+            sl_cmd = root / "sc-statusline.cmd"
             cmd.write_text(_SC_CMD, encoding="utf-8")
             ps1.write_text(_sc_ps1(src), encoding="utf-8")
-            files.extend([cmd, ps1])
+            sl_cmd.write_text(_SC_STATUSLINE_CMD, encoding="utf-8")
+            files.extend([cmd, ps1, sl_cmd])
+            cfg_path = merge_status_line(str(sl_cmd.resolve()))
+            files.append(cfg_path)
+            logger.info("Wired statusLine → {}", cfg_path)
 
         return PatchResult(
             status=PatchStatus.APPLIED,
             message=(
-                f"hot-auth + /sc slash + sc 已应用 "
+                f"hot-auth + /sc slash + sc + statusline 已应用 "
                 f"(hot={hot_hits}, slash={slash_hits}, root={root})"
             ),
             patch_name=self.metadata.name,
@@ -343,14 +357,14 @@ class CursorAgentPatch(PatchBase):
             files.append(chunk)
         root = find_cursor_agent_root()
         if root:
-            for name in ("sc.cmd", "sc.ps1"):
+            for name in ("sc.cmd", "sc.ps1", "sc-statusline.cmd"):
                 p = root / name
                 if p.exists():
                     p.unlink()
                     files.append(p)
         return PatchResult(
             status=PatchStatus.NOT_APPLIED,
-            message="已回滚 hot-auth、/sc slash 并移除 sc 启动器",
+            message="已回滚 hot-auth、/sc slash 并移除 sc / statusline 启动器",
             patch_name=self.metadata.name,
             files_modified=files,
             duration_ms=int((time.monotonic() - start) * 1000),

@@ -2,6 +2,11 @@
 
 本文件记录 AgentCLI Patchs 的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.1.2
+
+- `sc`：写入 `sc_status.json` 实时状态；新增 `sc statusline` 供 Agent CLI statusLine
+- apply 安装 `sc-statusline.cmd` 并合并 `~/.cursor/cli-config.json` 的 `statusLine`（完整账号/用量/auto 动作）
+
 ## 2.1.1
 
 - `cursor-agent`：向 Agent slash 面板注入 builtin `/sc`（修复仅装 `sc.cmd` 时交互框 `/sc` 落到技能列表的问题）
