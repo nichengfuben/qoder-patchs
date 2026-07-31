@@ -60,9 +60,10 @@ def _bar(pct: Any, width: int = 10) -> str:
     try:
         p = max(0.0, min(100.0, float(pct)))
     except Exception:
-        return "[" + ("░" * width) + "]"
+        return "[" + ("." * width) + "]"
     filled = int(round(width * p / 100.0))
-    return "[" + ("█" * filled) + ("░" * (width - filled)) + "]"
+    # ASCII：避免 Windows GBK 控制台无法显示 ░█
+    return "[" + ("#" * filled) + ("." * (width - filled)) + "]"
 
 
 def _short_email(email: str, max_len: int = 18) -> str:
