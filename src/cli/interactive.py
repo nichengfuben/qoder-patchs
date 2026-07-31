@@ -41,16 +41,17 @@ def _dispatch_menu_choice(choice: str, cli) -> bool:
     if choice == MENU_EXIT:
         cli.info("再见!")  # 再见!
         return True
-    elif choice == MENU_APPLY:
-        _interactive_apply(cli)
-    elif choice == MENU_STATUS:
-        _interactive_status(cli)
-    elif choice == MENU_ROLLBACK:
-        _interactive_rollback(cli)
-    elif choice == MENU_CONFIG:
-        _interactive_config(cli)
-    elif choice == MENU_ABOUT:
-        show_about(cli)
+
+    handlers = {
+        MENU_APPLY: _interactive_apply,
+        MENU_STATUS: _interactive_status,
+        MENU_ROLLBACK: _interactive_rollback,
+        MENU_CONFIG: _interactive_config,
+        MENU_ABOUT: show_about,
+    }
+    handler = handlers.get(choice)
+    if handler is not None:
+        handler(cli)
     return False
 
 

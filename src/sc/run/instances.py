@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 """多 AgentCLI 实例心跳与单 leader 选举（~/.cursor/sc_instances.json）。"""
 

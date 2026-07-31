@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 """Multi-instance auto loop: leader election + usage polling."""
 

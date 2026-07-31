@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 """Auto loop tick, leader prune, and foreground runner."""
 

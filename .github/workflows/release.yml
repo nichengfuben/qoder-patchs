@@ -27,30 +27,15 @@ jobs:
       - name: Build wheel
         run: python -m build
 
-      - name: Create GitHub Release
+      - name: Publish GitHub Release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          NOTES="$(python -c "
-          from pathlib import Path
-          import os
-          text = Path('CHANGELOG.md').read_text(encoding='utf-8')
-          ver = os.environ['GITHUB_REF_NAME'].lstrip('v')
-          lines = text.splitlines()
-          out = []
-          capture = False
-          for line in lines:
-              if line.startswith('## '):
-                  if capture:
-                      break
-                  if ver in line:
-                      capture = True
-                      continue
-              elif capture:
-                  out.append(line)
-          print('\\n'.join(out).strip() or ('Release ' + ver))
-          ")"
-          gh release create "$TAG" dist/* \
-            --title "Patcher ${TAG}" \
-            --notes "$NOTES"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --title "Patcher ${TAG}" \
+              --generate-notes
+          fi

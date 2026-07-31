@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 """Cursor Agent hot-auth replacements and markers."""
 
