@@ -1,0 +1,2 @@
+2026.07.23-e383d2b
+unpatched backups for cursor-agent patch tests

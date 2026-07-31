@@ -4,6 +4,8 @@
 
 ## 2.4.1
 
+- **cursor-agent 测试**：以未打补丁的 `2026.07.23-e383d2b` 源码 gzip fixture 验证 hot-auth / statusline / footer / slash / ps1
+- 修复 `cursor_patchops` 误留 `self` 导致 UI chunk 补丁无法调用
 - CI：去除若干源文件 UTF-8 BOM；展平 menu / status badge 嵌套以通过 Linux achecker
 - Release 工作流：tag 已存在时改为上传构建产物
 

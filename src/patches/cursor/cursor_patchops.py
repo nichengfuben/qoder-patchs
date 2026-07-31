@@ -117,7 +117,7 @@ def patch_compile_cache_ps1(
     return hits, files, backups
 
 def patch_statusline_interval(
-    self, bundle_dir: Path, dry_run: bool
+    bundle_dir: Path, dry_run: bool
 ) -> tuple[int, list[Path], list[Path]]:
     """把 use-status-line 的 debounce 改成按 updateIntervalMs 的 setInterval。"""
     files: list[Path] = []
@@ -149,7 +149,7 @@ def patch_statusline_interval(
     return hits, files, backups
 
 def strip_statusline_interval(
-    self, bundle_dir: Path, dry_run: bool
+    bundle_dir: Path, dry_run: bool
 ) -> tuple[int, list[Path]]:
     files: list[Path] = []
     hits = 0
@@ -172,7 +172,7 @@ def strip_statusline_interval(
     return hits, files
 
 def patch_footer_keep(
-    self, bundle_dir: Path, dry_run: bool
+    bundle_dir: Path, dry_run: bool
 ) -> tuple[int, list[Path], list[Path]]:
     """保留原生页脚，SC statusLine 只追加一行。"""
     files: list[Path] = []
@@ -204,7 +204,7 @@ def patch_footer_keep(
     return hits, files, backups
 
 def strip_footer_keep(
-    self, bundle_dir: Path, dry_run: bool
+    bundle_dir: Path, dry_run: bool
 ) -> tuple[int, list[Path]]:
     files: list[Path] = []
     hits = 0

@@ -1,6 +1,16 @@
-"""Tests for patches.cursor_agent — 用上游原串验证 hot-auth 替换。"""
+"""cursor-agent 补丁测试：输入为未打过任何补丁的上游源码 fixture。
+
+Fixture 来源：cursor-agent ``2026.07.23-e383d2b`` 的 virgin 备份
+（``index.js.bak.*`` / ``5305.index.js.bak.*``，无 agentcli 标记）。
+"""
 
 from __future__ import annotations
+
+import gzip
+import shutil
+from pathlib import Path
+
+import pytest
 
 from patches.cursor.cursor_agent import (
     BOOT_MARKER,
@@ -8,6 +18,7 @@ from patches.cursor.cursor_agent import (
     EPHEMERAL_NULL_MARKER,
     FOOTER_KEEP_MARKER,
     MARKER,
+    SLASH_MARKER,
     STATUS_INTERVAL_MARKER,
     _COMPILE_CACHE_NEW,
     _COMPILE_CACHE_OLD,
@@ -18,151 +29,129 @@ from patches.cursor.cursor_agent import (
     apply_hot_auth_replacements,
     find_client_config,
 )
-
-
-# 上游 minify 原串（与 2026.07.23-e383d2b index.js 对齐；勿改空格）
-_ORIG_FILE_GET_ACCESS = (
-    "getAccessToken(){return o(this,void 0,void 0,(function*(){var e;"
-    "if(this.cachedAccessToken)return this.cachedAccessToken;"
-    "const t=yield this.readAuthData();"
-    "return(null==t?void 0:t.accessToken)?(this.cachedAccessToken=t.accessToken,"
-    "this.cachedRefreshToken=null!==(e=t.refreshToken)&&void 0!==e?e:null,t.accessToken):void 0}))}"
+from patches.cursor.cursor_chunks import (
+    _FOOTER_KEEP_NEW,
+    _FOOTER_KEEP_OLD,
+    _SLASH_ANCHOR,
+    _SLASH_INJECT,
+    _STATUS_INTERVAL_NEW,
+    _STATUS_INTERVAL_OLD,
 )
-_ORIG_FACTORY = (
+from patches.cursor import cursor_patchops as ops
+from core.patch_base import PatchStatus
+
+_FIXTURE_DIR = Path(__file__).resolve().parent / "cursoragent"
+_INDEX_GZ = _FIXTURE_DIR / "index.gz"
+_UICHUNK_GZ = _FIXTURE_DIR / "uichunk.gz"
+
+# 上游 virgin 原串特征（必须出现在未补丁源码中）
+_VIRGIN_CACHE_SHORT = "if(this.cachedAccessToken)return this.cachedAccessToken"
+_VIRGIN_EPHEMERAL_R = "ephemeralToken:R,isTokenExpiringSoon:Q,"
+_VIRGIN_EPHEMERAL_I = "return yield(0,r.Zn)({currentToken:l,ephemeralToken:i,isTokenExpiringSoon:a,"
+_VIRGIN_FACTORY = (
     'function A(e){var t;const n=null!==(t=e.store)&&void 0!==t?t:"default";'
     'return"memory"===n?new m:"file"===n?new a(e.domain):'
     '"darwin"===(0,r.platform)()?new u(e.domain):new a(e.domain)}'
 )
-_ORIG_UX_ZN = "return yield(0,r.Zn)({currentToken:l,ephemeralToken:i,isTokenExpiringSoon:a,"
-_ORIG_EPHEMERAL_R = "ephemeralToken:R,isTokenExpiringSoon:Q,"
-_ORIG_SET_R = "setEphemeralToken:e=>{R=e}"
-_ORIG_BEARER_UX = 'l=yield(0,B.uX)(e,a);null!=l&&s.header.set("authorization",`Bearer ${l}`);'
-_ORIG_BEARER_INLINE = '}(e,a);null!=l&&s.header.set("authorization",`Bearer ${l}`);'
-_ORIG_ZN = (
-    "function k(e){return v(this,void 0,void 0,(function*(){"
-    "const{currentToken:t,ephemeralToken:n,isTokenExpiringSoon:r,refreshToken:s}=e;"
-    "if(!t){if(n){if(!r(n))return n;const e=yield s();return null!=e?e:n}"
-    "return yield s()}if(!r(t))return t;return(yield s())||(n&&!r(n)?n:t)}))}"
-)
-_ORIG_SET_EPHEMERAL = "function l(e){i=null!=e?e:null}"
-_ORIG_SET_APIKEY = "function c(e){o=null!=e?e:null}"
-_ORIG_PERSIST_EPHEMERAL = (
-    "function I(e){return v(this,void 0,void 0,(function*(){"
-    "const{accessToken:t,persist:n,setEphemeralToken:r}=e;r(t),yield n()}))}"
-)
-_ORIG_MEMORY_GET_ACCESS = (
-    "getAccessToken(){return d(this,void 0,void 0,(function*(){"
-    "var e;return null!==(e=this.accessToken)&&void 0!==e?e:void 0}))}"
-)
-_ORIG_KEYCHAIN_GET_ALL = (
-    "getAllCredentials(){return c(this,void 0,void 0,(function*(){"
-    "if(null!==this.cachedAccessToken&&null!==this.cachedRefreshToken)"
-    "return{accessToken:this.cachedAccessToken||void 0,"
-    "refreshToken:this.cachedRefreshToken||void 0,apiKey:this.cachedApiKey||void 0};"
-    "const[e,t,n]=yield Promise.all(["
-    "null!==this.cachedAccessToken?Promise.resolve(this.cachedAccessToken||void 0)"
-    ":this.getSecret(this.accessTokenService),"
-    "null!==this.cachedRefreshToken?Promise.resolve(this.cachedRefreshToken||void 0)"
-    ":this.getSecret(this.refreshTokenService),"
-    "null!==this.cachedApiKey?Promise.resolve(this.cachedApiKey||void 0)"
-    ":this.getSecret(this.apiKeyService)]);"
-    "return this.cachedAccessToken=e||null,this.cachedRefreshToken=t||null,"
-    "this.cachedApiKey=n||null,{accessToken:e,refreshToken:t,apiKey:n}}))}"
-)
-
-_FIXTURE_ORIGINAL = "\n".join(
-    [
-        _ORIG_FILE_GET_ACCESS,
-        _ORIG_FACTORY,
-        _ORIG_UX_ZN,
-        _ORIG_ZN,
-        _ORIG_SET_EPHEMERAL,
-        _ORIG_SET_APIKEY,
-        _ORIG_PERSIST_EPHEMERAL,
-        _ORIG_MEMORY_GET_ACCESS,
-        _ORIG_KEYCHAIN_GET_ALL,
-        _ORIG_EPHEMERAL_R,
-        _ORIG_SET_R,
-        _ORIG_BEARER_UX,
-        _ORIG_BEARER_INLINE,
-    ]
-)
 
 
-def test_hot_auth_marker() -> None:
-    assert MARKER.startswith("/*") and MARKER.endswith("*/")
+def _load_gz(path: Path) -> str:
+    assert path.is_file(), f"missing fixture: {path}"
+    return gzip.decompress(path.read_bytes()).decode("utf-8")
 
 
-def test_status_interval_marker() -> None:
-    assert STATUS_INTERVAL_MARKER.startswith("/*") and "status-interval" in STATUS_INTERVAL_MARKER
+@pytest.fixture(scope="module")
+def virgin_index() -> str:
+    text = _load_gz(_INDEX_GZ)
+    assert "agentcli-hot-auth" not in text
+    assert _VIRGIN_CACHE_SHORT in text
+    return text
 
 
-def test_footer_keep_marker() -> None:
-    assert FOOTER_KEEP_MARKER.startswith("/*") and "footer-keep" in FOOTER_KEEP_MARKER
+@pytest.fixture(scope="module")
+def virgin_uichunk() -> str:
+    text = _load_gz(_UICHUNK_GZ)
+    assert "agentcli-" not in text
+    assert _STATUS_INTERVAL_OLD in text
+    assert _FOOTER_KEEP_OLD in text
+    assert _SLASH_ANCHOR in text
+    assert 'ue.push({id:"sc"' not in text
+    return text
 
 
-def test_boot_marker() -> None:
-    assert "agentcli-sc-auto-boot" in BOOT_MARKER
+def _virgin_replacements() -> list[tuple[str, str]]:
+    """仅「上游原串 → 补丁」条目，排除已补丁中间态的升级路径。"""
+    return [(old, new) for old, new in _REPLACEMENTS if "agentcli-hot-auth" not in old]
 
 
-def test_metadata_includes_statusline_and_slash() -> None:
-    p = CursorAgentPatch()
-    assert p.metadata.name == "cursor-agent"
-    assert "auto" in p.metadata.tags
-    assert "statusline" in p.metadata.tags
-    assert "slash" in p.metadata.tags
-    assert p.metadata.version >= "2.3.5"
+def test_fixture_files_exist() -> None:
+    assert _INDEX_GZ.is_file()
+    assert _UICHUNK_GZ.is_file()
+    assert (_FIXTURE_DIR / "VERSION.txt").is_file()
 
 
-def test_find_client_config_requires_env(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("AGENTCLI_SC_CONFIG_SRC", raising=False)
-    assert find_client_config() is None
-    src = tmp_path / "config.json"
-    src.write_text('{"base_url":"","api_keys":[]}', encoding="utf-8")
-    monkeypatch.setenv("AGENTCLI_SC_CONFIG_SRC", str(src))
-    path = find_client_config()
-    assert path is not None
-    assert path.name == "config.json"
+def test_virgin_index_contains_all_hot_auth_sources(virgin_index: str) -> None:
+    missing = [old[:72] for old, _ in _virgin_replacements() if old not in virgin_index]
+    assert missing == [], f"virgin index 缺少 {len(missing)} 条原串: {missing[:3]}"
 
 
-def test_apply_hot_auth_on_original_snippets() -> None:
-    """原串 → 补丁后：无缓存短路、无 ephemeral、工厂强制 file。"""
-    out, hits = apply_hot_auth_replacements(_FIXTURE_ORIGINAL)
-    assert hits >= 8
+def test_hot_auth_on_virgin_index_matches_expectations(virgin_index: str) -> None:
+    out, hits = apply_hot_auth_replacements(virgin_index)
+    assert hits >= len(_virgin_replacements())
     assert MARKER in out
     assert EPHEMERAL_NULL_MARKER in out
     assert DISK_MARKER in out
     assert _DISK_BEARER_OVERRIDE in out
-    assert "ephemeralToken:R," not in out
-    assert "setEphemeralToken:e=>{R=e}" not in out
-    assert "if(this.cachedAccessToken)return this.cachedAccessToken" not in out
-    assert "this.cachedAccessToken=t.accessToken" not in out
-    assert "ephemeralToken:i," not in out
+    assert _GET_ACCESS_NOCACHE in out
     assert "function A(e){/*agentcli-hot-auth*/return new a(e.domain)}" in out
     assert "function l(e){/*agentcli-hot-auth*/i=null}" in out
     assert "function c(e){/*agentcli-hot-auth*/o=null}" in out
-    assert "r(null),yield n()" in out
-    assert "return null!==(e=this.accessToken)" not in out
-    assert "if(null!==this.cachedAccessToken&&null!==this.cachedRefreshToken)return{accessToken:this.cachedAccessToken" not in out
-    # Zn 解构不再包含 ephemeralToken
-    assert "ephemeralToken:n,isTokenExpiringSoon" not in out
     assert "/*agentcli-hot-auth*/if(t&&!r(t))return t" in out
-    assert _GET_ACCESS_NOCACHE.split("/*agentcli-hot-auth*/")[1][:40] in out or "via:\"getAccessToken\"" in out
+    assert "r(null),yield n()" in out
+    # 禁止残留
+    assert _VIRGIN_CACHE_SHORT not in out
+    assert _VIRGIN_EPHEMERAL_R not in out
+    assert _VIRGIN_EPHEMERAL_I not in out
+    assert _VIRGIN_FACTORY not in out
+    assert "ephemeralToken:R," not in out
+    assert "setEphemeralToken:e=>{R=e}" not in out
+    assert "this.cachedAccessToken=t.accessToken" not in out
 
 
-def test_apply_hot_auth_idempotent() -> None:
-    once, hits1 = apply_hot_auth_replacements(_FIXTURE_ORIGINAL)
+def test_hot_auth_idempotent_on_virgin(virgin_index: str) -> None:
+    once, hits1 = apply_hot_auth_replacements(virgin_index)
     twice, hits2 = apply_hot_auth_replacements(once)
     assert once == twice
     assert hits2 >= hits1
 
 
-def test_each_replacement_old_becomes_new() -> None:
-    for old, new in _REPLACEMENTS:
+def test_each_virgin_old_becomes_new(virgin_index: str) -> None:
+    for old, new in _virgin_replacements():
+        assert old in virgin_index
         patched, hits = apply_hot_auth_replacements(old)
         assert hits >= 1
         assert new in patched
         assert old not in patched
+
+
+def test_uichunk_status_footer_slash_on_virgin(virgin_uichunk: str) -> None:
+    text = virgin_uichunk
+    assert _STATUS_INTERVAL_OLD in text and STATUS_INTERVAL_MARKER not in text
+    status = text.replace(_STATUS_INTERVAL_OLD, _STATUS_INTERVAL_NEW, 1)
+    assert STATUS_INTERVAL_MARKER in status
+    assert _STATUS_INTERVAL_OLD not in status
+    assert "setInterval((()=>C(E.payload)),w)" in status
+
+    assert _FOOTER_KEEP_OLD in status and FOOTER_KEEP_MARKER not in status
+    footer = status.replace(_FOOTER_KEEP_OLD, _FOOTER_KEEP_NEW, 1)
+    assert FOOTER_KEEP_MARKER in footer
+    assert _FOOTER_KEEP_OLD not in footer
+
+    assert _SLASH_ANCHOR in footer and SLASH_MARKER not in footer
+    slash = footer.replace(_SLASH_ANCHOR, _SLASH_INJECT, 1)
+    assert SLASH_MARKER in slash
+    assert 'ue.push({id:"sc"' in slash
+    assert _SLASH_ANCHOR in slash  # inject 末尾仍含 anchor
 
 
 def test_compile_cache_ps1_snippet() -> None:
@@ -173,30 +162,99 @@ def test_compile_cache_ps1_snippet() -> None:
     assert out == _COMPILE_CACHE_NEW
 
 
-def test_live_bundle_originals_match_or_already_patched() -> None:
-    """本机 index.js：要么仍含原串（可补），要么已是补丁目标形态。"""
-    from sc.core.paths import find_cursor_agent_bundle
+def test_metadata() -> None:
+    p = CursorAgentPatch()
+    assert p.metadata.name == "cursor-agent"
+    assert "auto" in p.metadata.tags
+    assert "statusline" in p.metadata.tags
+    assert "slash" in p.metadata.tags
+    assert p.metadata.version >= "2.3.5"
 
-    bundle = find_cursor_agent_bundle()
-    if bundle is None:
-        return
-    text = (bundle / "index.js").read_text(encoding="utf-8", errors="ignore")
-    # 核心原串或已补丁形态至少命中一侧
-    assert (
-        _ORIG_FILE_GET_ACCESS in text
-        or "/*agentcli-hot-auth*/const t=yield this.readAuthData()" in text
+
+def test_find_client_config_requires_env(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("AGENTCLI_SC_CONFIG_SRC", raising=False)
+    monkeypatch.delenv("PATCHER_CONFIG", raising=False)
+    monkeypatch.delenv("PATCHER_SC_CONFIG_SRC", raising=False)
+    assert find_client_config() is None
+    src = tmp_path / "config.json"
+    src.write_text('{"base_url":"","api_keys":[]}', encoding="utf-8")
+    monkeypatch.setenv("PATCHER_CONFIG", str(src))
+    path = find_client_config()
+    assert path is not None
+    assert path.name == "config.json"
+
+
+def _build_temp_virgin_bundle(
+    tmp_path: Path, virgin_index: str, virgin_uichunk: str
+) -> tuple[Path, Path, Path, Path]:
+    version = tmp_path / "versions" / "2026.07.23-e383d2b"
+    version.mkdir(parents=True)
+    index = version / "index.js"
+    chunk = version / "5305.index.js"
+    index.write_text(virgin_index, encoding="utf-8")
+    chunk.write_text(virgin_uichunk, encoding="utf-8")
+    root = tmp_path
+    ps1 = root / "cursor-agent.ps1"
+    ps1.write_text(
+        "param()\n" + _COMPILE_CACHE_OLD + "\nWrite-Host ok\n",
+        encoding="utf-8",
     )
-    assert (
-        _ORIG_UX_ZN in text
-        or EPHEMERAL_NULL_MARKER in text
+    shutil.copy2(ps1, version / "cursor-agent.ps1")
+    (root / "cursor-agent.cmd").write_text(
+        "@echo off\r\nnode index.js %*\r\n", encoding="utf-8"
     )
-    assert (
-        _ORIG_ZN in text
-        or "/*agentcli-hot-auth*/if(t&&!r(t))return t" in text
+    return root, version, index, chunk
+
+
+def _patch_paths(monkeypatch: pytest.MonkeyPatch, version: Path, root: Path) -> None:
+    monkeypatch.setattr(ops, "find_cursor_agent_bundle", lambda: version)
+    monkeypatch.setattr(ops, "find_cursor_agent_root", lambda: root)
+    monkeypatch.setattr(
+        "patches.cursor.cursor_agent.find_cursor_agent_bundle", lambda: version
     )
-    patched, hits = apply_hot_auth_replacements(text)
-    assert hits >= 1
-    assert EPHEMERAL_NULL_MARKER in patched
-    assert DISK_MARKER in patched
-    assert "ephemeralToken:i," not in patched
-    assert "ephemeralToken:R," not in patched
+    monkeypatch.setattr(
+        "patches.cursor.cursor_agent.find_cursor_agent_root", lambda: root
+    )
+    monkeypatch.setattr(ops, "assert_js_syntax", lambda path, source: None)
+
+
+def test_patchops_on_temp_virgin_bundle(
+    virgin_index: str, virgin_uichunk: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """在临时目录还原 virgin bundle，跑 hot-auth / UI chunk / ps1 补丁并断言。"""
+    root, version, index, chunk = _build_temp_virgin_bundle(
+        tmp_path, virgin_index, virgin_uichunk
+    )
+    _patch_paths(monkeypatch, version, root)
+
+    hot_hits, _, _ = ops.patch_hot_auth(index, dry_run=False)
+    assert hot_hits >= len(_virgin_replacements())
+    patched_index = index.read_text(encoding="utf-8")
+    assert MARKER in patched_index and EPHEMERAL_NULL_MARKER in patched_index
+    assert DISK_MARKER in patched_index
+    assert _VIRGIN_CACHE_SHORT not in patched_index
+
+    iv_hits, _, _ = ops.patch_statusline_interval(version, dry_run=False)
+    ft_hits, _, _ = ops.patch_footer_keep(version, dry_run=False)
+    sl_hits, _, _ = ops._inject_slash(version, dry_run=False)
+    assert iv_hits >= 1 and ft_hits >= 1 and sl_hits >= 1
+    chunk_text = chunk.read_text(encoding="utf-8")
+    assert STATUS_INTERVAL_MARKER in chunk_text
+    assert FOOTER_KEEP_MARKER in chunk_text
+    assert SLASH_MARKER in chunk_text
+
+    ps1_hits, _, _ = ops.patch_compile_cache_ps1(root, dry_run=False)
+    assert ps1_hits >= 1
+    assert "Remove-Item Env:NODE_COMPILE_CACHE" in (
+        root / "cursor-agent.ps1"
+    ).read_text(encoding="utf-8")
+
+    status = CursorAgentPatch().check(version)
+    assert status in (PatchStatus.PARTIAL, PatchStatus.APPLIED)
+
+
+def test_markers() -> None:
+    assert MARKER.startswith("/*") and MARKER.endswith("*/")
+    assert STATUS_INTERVAL_MARKER.startswith("/*")
+    assert FOOTER_KEEP_MARKER.startswith("/*")
+    assert "agentcli-sc-auto-boot" in BOOT_MARKER
