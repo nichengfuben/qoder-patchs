@@ -1,4 +1,4 @@
-"""CLI interface for AgentCLI Patchs.
+"""CLI interface for Patcher.
 
 Provides Typer-based command-line interface with:
 - Interactive menus (Questionary)
@@ -6,7 +6,7 @@ Provides Typer-based command-line interface with:
 - ASCII art banner (charmap)
 """
 
-__version__ = "2.1.0"
+__version__ = "2.4.0"
 
 from cli.app import typer_app
 from cli.charmap import (

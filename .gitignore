@@ -16,6 +16,4 @@ htmlcov/
 venv/
 .agents/
 agent_log/
-achecker.py
 abnormis.txt
-achecker.py.lnk

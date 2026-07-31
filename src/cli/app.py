@@ -128,8 +128,8 @@ def _get_cli():
 # ---------------------------------------------------------------------------
 
 typer_app = typer.Typer(
-    name="agentcli-patchs",
-    help="Qoder CLI 补丁管理工具 -- 交互式菜单, 可扩展补丁系统",
+    name="patcher",
+    help="Patcher — Qoder/Cursor CLI 补丁管理工具，交互式菜单与可扩展补丁系统",
     no_args_is_help=False,
     add_completion=True,
     pretty_exceptions_enable=True,
@@ -274,7 +274,7 @@ def apply(
     if bundle_dir is None:
         cli.error(
             "未找到 Qoder CLI bundle 目录.\n"
-            "请在配置中设置 paths.bundle_dir 或设置 AGENTCLI_PATCHS_BUNDLE 环境变量"
+            "请在配置中设置 paths.bundle_dir 或设置 PATCHER_BUNDLE（或 AGENTCLI_PATCHS_BUNDLE）环境变量"
         )
         raise typer.Exit(code=10)
 

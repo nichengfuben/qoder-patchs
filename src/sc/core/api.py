@@ -232,6 +232,23 @@ def extract_tokens(data: Dict[str, Any]) -> Tuple[str, str, str, str]:
     return access, refresh, email, card
 
 
+def _usage_float(v: Any, default: float = 0.0) -> float:
+    try:
+        return float(v) if v is not None else default
+    except Exception:
+        return default
+
+
+def _usage_status(total_pct: float, is_unlimited: bool) -> str:
+    if is_unlimited:
+        return "UNLIMITED"
+    if total_pct >= 100:
+        return "LIMIT"
+    if total_pct >= 95:
+        return "NEAR_LIMIT"
+    return "OK"
+
+
 def parse_usage(data: Dict[str, Any]) -> Dict[str, Any]:
     """对齐 Common/client.py ``parse_usage``：总用量 = (auto + api) / 2。"""
     plan = (
@@ -240,19 +257,11 @@ def parse_usage(data: Dict[str, Any]) -> Dict[str, Any]:
         else {}
     )
     breakdown = plan.get("breakdown") or {}
-
-    def f(v: Any, default: float = 0.0) -> float:
-        try:
-            return float(v) if v is not None else default
-        except Exception:
-            return default
-
-    total = f(breakdown.get("total"))
-    included = f(breakdown.get("included"))
-    bonus = f(breakdown.get("bonus"))
-    auto_pct = f(plan.get("autoPercentUsed"))
-    api_pct = f(plan.get("apiPercentUsed"))
-    # client.py：两边都为 0 时 total_pct=0，不用 totalPercentUsed 兜底
+    total = _usage_float(breakdown.get("total"))
+    included = _usage_float(breakdown.get("included"))
+    bonus = _usage_float(breakdown.get("bonus"))
+    auto_pct = _usage_float(plan.get("autoPercentUsed"))
+    api_pct = _usage_float(plan.get("apiPercentUsed"))
     total_pct = (
         (auto_pct + api_pct) / 2.0 if (auto_pct > 0 or api_pct > 0) else 0.0
     )
@@ -265,14 +274,7 @@ def parse_usage(data: Dict[str, Any]) -> Dict[str, Any]:
         or data.get("namedModelSelectedDisplayMessage")
         or ""
     )
-    if is_unlimited:
-        status = "UNLIMITED"
-    elif total_pct >= 100:
-        status = "LIMIT"
-    elif total_pct >= 95:
-        status = "NEAR_LIMIT"
-    else:
-        status = "OK"
+    status = _usage_status(total_pct, is_unlimited)
     return {
         "total": total,
         "used": used,

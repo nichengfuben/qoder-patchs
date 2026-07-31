@@ -1,4 +1,4 @@
-"""Configuration management for agentcli-patchs.
+"""Configuration management for patcher.
 
 Provides Pydantic-based configuration models with TOML persistence.
 Configuration is loaded from TOML files, validated, and can be saved back.
@@ -194,18 +194,14 @@ def _resolve_from_cli_arg(cli_arg: str) -> Path:
 
 
 def _resolve_from_env_var() -> Optional[Path]:
-    """Resolve config path from the ``AGENTCLI_PATCHS_CONFIG`` environment variable.
-
-    Returns:
-        The resolved ``Path`` to the config file, or ``None`` if not set/found.
-    """
-    env_path = os.environ.get("AGENTCLI_PATCHS_CONFIG")
+    """Resolve config from PATCHER_CONFIG or AGENTCLI_PATCHS_CONFIG."""
+    env_path = os.environ.get("PATCHER_CONFIG") or os.environ.get("AGENTCLI_PATCHS_CONFIG")
     if env_path:
         p = Path(env_path)
         if p.exists():
             logger.debug(f"Config resolved from env var: {p}")
             return p
-        logger.warning(f"AGENTCLI_PATCHS_CONFIG set but file not found: {env_path}")
+        logger.warning(f"PATCHER_CONFIG/AGENTCLI_PATCHS_CONFIG set but file not found: {env_path}")
     return None
 
 
@@ -233,7 +229,7 @@ def _resolve_from_user_config_dir() -> Optional[Path]:
     try:
         from platformdirs import user_config_dir
 
-        user_config = Path(user_config_dir("agentcli-patchs", "nichengfuben")) / "config.toml"
+        user_config = Path(user_config_dir("patcher", "nichengfuben")) / "config.toml"
         if user_config.exists():
             logger.debug(f"Config resolved from user config dir: {user_config}")
             return user_config

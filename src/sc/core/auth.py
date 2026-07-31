@@ -6,9 +6,10 @@ import json
 import os
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Dict, Optional
 
-from sc.paths import auth_json_path, cursor_config_dir
+from sc.core.paths import auth_json_path, cursor_config_dir
 
 
 def read_auth() -> Optional[Dict[str, Any]]:
@@ -21,18 +22,10 @@ def read_auth() -> Optional[Dict[str, Any]]:
         return None
 
 
-def write_auth(access_token: str, refresh_token: Optional[str] = None) -> bool:
-    """写入 auth.json；整文件重写以触发 Agent 热读（mtime 变化）。
-
-    根因说明（曾出现「写入失败」）：
-    - 旧实现用固定临时名 ``auth.tmp``（``Path.with_suffix('.tmp')``）。
-    - ``sc auto`` leader 与手动 ``sc pull`` 并发时会抢同一个 tmp，
-      ``Path.replace`` 在 Windows 上抛 ``PermissionError`` / ``WinError 32``，
-      异常被裸 ``except`` 吞掉，只返回 False。
-    - 修复：每进程唯一 tmp + 有限次重试 + 失败时打印真实异常。
-    """
+def _build_auth_payload(
+    access_token: str, refresh_token: Optional[str] = None
+) -> tuple[Optional[str], Path]:
     path = auth_json_path()
-    last_exc: Optional[BaseException] = None
     try:
         cursor_config_dir().mkdir(parents=True, exist_ok=True)
         data: Dict[str, Any] = {}
@@ -45,11 +38,14 @@ def write_auth(access_token: str, refresh_token: Optional[str] = None) -> bool:
         data["refreshToken"] = refresh_token or access_token
         data.pop("access_token", None)
         data.pop("refresh_token", None)
-        text = json.dumps(data, ensure_ascii=False, indent=2)
+        return json.dumps(data, ensure_ascii=False, indent=2), path
     except Exception as exc:
         print(f"write_auth 准备失败: {type(exc).__name__}: {exc}")
-        return False
+        return None, path
 
+
+def _atomic_write_auth(path: Path, text: str) -> bool:
+    last_exc: Optional[BaseException] = None
     for attempt in range(1, 6):
         tmp = path.with_name(f"auth.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
         try:
@@ -66,7 +62,6 @@ def write_auth(access_token: str, refresh_token: Optional[str] = None) -> bool:
                 tmp.unlink(missing_ok=True)
             except Exception:
                 pass
-            # 目的文件被 Cursor/agent 短暂占用时退避重试
             time.sleep(0.15 * attempt)
             try:
                 path.write_text(text, encoding="utf-8")
@@ -78,12 +73,19 @@ def write_auth(access_token: str, refresh_token: Optional[str] = None) -> bool:
             except Exception as exc2:
                 last_exc = exc2
                 time.sleep(0.15 * attempt)
-
     print(
         f"write_auth 失败 path={path} "
         f"err={type(last_exc).__name__ if last_exc else '?'}: {last_exc}"
     )
     return False
+
+
+def write_auth(access_token: str, refresh_token: Optional[str] = None) -> bool:
+    """写入 auth.json；整文件重写以触发 Agent 热读（mtime 变化）。"""
+    text, path = _build_auth_payload(access_token, refresh_token)
+    if text is None:
+        return False
+    return _atomic_write_auth(path, text)
 
 
 def access_token() -> Optional[str]:

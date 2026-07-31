@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 
-from sc.auth import token_subject
+from sc.core.auth import token_subject
 
 
 def _fake_jwt(payload: dict) -> str:

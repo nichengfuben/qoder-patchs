@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AgentCLI Patchs - Entry point."""
+"""Patcher - Entry point."""
 import sys
 from pathlib import Path
 

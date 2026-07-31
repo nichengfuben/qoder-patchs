@@ -1,11 +1,11 @@
 # ==============================================================================
-# agentcli-patchs 配置文件模板
+# Patcher 配置文件模板
 # ==============================================================================
 # 使用说明:
 #   1. 复制此文件为 config.toml:  cp config.template.toml config.toml
 #   2. 根据需要修改 config.toml 中的配置项
 #   3. 配置文件优先级:
-#      --config 参数 > AGENTCLI_PATCHS_CONFIG 环境变量 > 项目根 config.toml > 默认值
+#      --config 参数 > PATCHER_CONFIG（兼容 AGENTCLI_PATCHS_CONFIG）> 项目根 config.toml > 默认值
 # ==============================================================================
 
 [patch]
@@ -52,7 +52,7 @@ use_color = true
 [paths]
 # 手动指定 bundle 目录 (省略则自动查找)
 # 自动查找策略 (按优先级):
-#   1. 环境变量 AGENTCLI_PATCHS_BUNDLE
+#   1. 环境变量 PATCHER_BUNDLE（兼容 AGENTCLI_PATCHS_BUNDLE）
 #   2. npm root -g @qoder-ai/qodercli / bundle
 #   3. 常见安装路径扫描
 # 类型: str | 默认: 省略 (自动查找)
@@ -67,7 +67,7 @@ backup_dir = ".backup"
 # 启用后日志同时写入控制台和文件, 文件日志包含更详细的信息
 # 适用于计划任务自动运行时记录日志
 # 类型: str | 默认: 省略
-# log_file = "logs/agentcli-patchs.log"
+# log_file = "logs/patcher.log"
 
 [persistence]
 # 是否创建 Windows 计划任务

@@ -1,6 +1,14 @@
 # Changelog
 
-本文件记录 AgentCLI Patchs 的发布变更。产品说明见 [README.md](README.md)。
+本文件记录 Patcher（原 AgentCLI Patchs）的发布变更。产品说明见 [README.md](README.md)。
+
+## 2.4.0
+
+- 项目更名为 **Patcher**（包名 `patcher`，仓库 `nichengfuben/Patcher`）
+- CLI 入口 `patcher`；保留 `agentcli-patchs` / `acp` / `qp` 兼容
+- 环境变量优先 `PATCHER_*`，兼容 `AGENTCLI_PATCHS_*`
+- `src/sc` 拆为 `core/` + `run/`；`cursor-agent` 补丁拆模块以通过 achecker
+- 新增 GitHub Actions CI（pytest）与 tag Release 工作流
 
 ## 2.3.5
 

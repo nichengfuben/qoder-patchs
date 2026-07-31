@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from patches.cursor_agent import (
+from patches.cursor.cursor_agent import (
     BOOT_MARKER,
     DISK_MARKER,
     EPHEMERAL_NULL_MARKER,
@@ -175,7 +175,7 @@ def test_compile_cache_ps1_snippet() -> None:
 
 def test_live_bundle_originals_match_or_already_patched() -> None:
     """本机 index.js：要么仍含原串（可补），要么已是补丁目标形态。"""
-    from sc.paths import find_cursor_agent_bundle
+    from sc.core.paths import find_cursor_agent_bundle
 
     bundle = find_cursor_agent_bundle()
     if bundle is None:

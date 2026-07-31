@@ -14,10 +14,10 @@ def _show_interactive_banner(cli, config) -> None:
     """Print the startup banner and title block if enabled in config."""
     if not config.ui.show_banner:
         return
-    cli.banner("AGENTCLI")
+    cli.banner("PATCHER")
     cli.print()
     cli.print(
-        f"  [bold bright_blue]AgentCLI Patchs v{__version__}[/bold bright_blue]"
+        f"  [bold bright_blue]Patcher v{__version__}[/bold bright_blue]"
     )
     cli.divider()
     cli.print()

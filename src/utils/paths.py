@@ -167,10 +167,10 @@ def _strategy_config(config: Optional["AppConfig"]) -> Optional[Path]:
 
 
 def _strategy_env_var() -> Optional[Path]:
-    """Strategy B: Use AGENTCLI_PATCHS_BUNDLE environment variable."""
-    env_path = os.environ.get("AGENTCLI_PATCHS_BUNDLE")
+    """Strategy B: PATCHER_BUNDLE or AGENTCLI_PATCHS_BUNDLE environment variable."""
+    env_path = os.environ.get("PATCHER_BUNDLE") or os.environ.get("AGENTCLI_PATCHS_BUNDLE")
     if not env_path:
-        logger.debug("Strategy B: AGENTCLI_PATCHS_BUNDLE not set, skipping")
+        logger.debug("Strategy B: PATCHER_BUNDLE / AGENTCLI_PATCHS_BUNDLE not set, skipping")
         return None
 
     path = Path(env_path)

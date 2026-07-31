@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sc.cli import cmd_doctor
+from sc.run.commands import cmd_doctor
 
 
 def test_cmd_doctor_runs() -> None:

@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
-from sc.paths import config_json_path, cursor_config_dir
+from sc.core.paths import config_json_path, cursor_config_dir
 
 # 非敏感运行默认值；base_url / api_keys 必须由用户 config.json 提供
 DEFAULT_CONFIG: Dict[str, Any] = {

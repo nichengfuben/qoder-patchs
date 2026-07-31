@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from sc.status_store import format_status_lines
+from sc.run.status_store import format_status_lines
 
 
 def _strip(s: str) -> str:

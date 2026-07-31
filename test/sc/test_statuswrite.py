@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from sc import status_store
+from sc.run import status_store
 
 
 def test_write_status_concurrent_no_raise(tmp_path: Path, monkeypatch) -> None:

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from sc.api import is_limit_reached, parse_usage
-from sc.keys import KeyPool
+from sc.core.api import is_limit_reached, parse_usage
+from sc.core.keys import KeyPool
 
 
 def test_parse_usage_avg_auto_api() -> None:

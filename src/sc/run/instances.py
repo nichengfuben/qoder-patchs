@@ -1,14 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-"""多 AgentCLI 实例心跳与单 leader 选举。
-
-文件：``~/.cursor/sc_instances.json``
-
-规则：
-1. **Leader** = 心跳未过期的实例中 ``started_at`` **最晚**者（n=1 即该实例）。
-2. **仅 leader** 扫描全部实例时间戳：``now - heartbeat_at >= 10`` 直接剔除。
-3. Follower 只刷新自己的心跳，不清理他人。
-"""
+"""多 AgentCLI 实例心跳与单 leader 选举（~/.cursor/sc_instances.json）。"""
 
 import json
 import os
@@ -28,7 +20,6 @@ SCHEMA_VERSION = 1
 
 
 def _is_stale(ts: float, *, now: Optional[float] = None) -> bool:
-    """``now - ts >= 10`` → 过期。"""
     now = time.time() if now is None else now
     try:
         t = float(ts or 0)
@@ -75,6 +66,46 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+def _try_acquire_lock(fh, deadline: float, path: Path) -> bool:
+    if os.name == "nt":
+        import msvcrt
+
+        while True:
+            try:
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                return True
+            except OSError:
+                if time.time() >= deadline:
+                    raise TimeoutError(f"lock timeout: {path}")
+                time.sleep(0.05)
+    import fcntl
+
+    while True:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            if time.time() >= deadline:
+                raise TimeoutError(f"lock timeout: {path}")
+            time.sleep(0.05)
+
+
+def _release_lock(fh) -> None:
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+    except Exception:
+        pass
+
+
 @contextmanager
 def _file_lock(timeout: float = 5.0) -> Iterator[None]:
     home_cursor_dir().mkdir(parents=True, exist_ok=True)
@@ -83,46 +114,11 @@ def _file_lock(timeout: float = 5.0) -> Iterator[None]:
     deadline = time.time() + timeout
     locked = False
     try:
-        if os.name == "nt":
-            import msvcrt
-
-            while True:
-                try:
-                    fh.seek(0)
-                    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
-                    locked = True
-                    break
-                except OSError:
-                    if time.time() >= deadline:
-                        raise TimeoutError(f"lock timeout: {path}")
-                    time.sleep(0.05)
-        else:
-            import fcntl
-
-            while True:
-                try:
-                    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    locked = True
-                    break
-                except BlockingIOError:
-                    if time.time() >= deadline:
-                        raise TimeoutError(f"lock timeout: {path}")
-                    time.sleep(0.05)
+        locked = _try_acquire_lock(fh, deadline, path)
         yield
     finally:
         if locked:
-            try:
-                if os.name == "nt":
-                    import msvcrt
-
-                    fh.seek(0)
-                    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
-                else:
-                    import fcntl
-
-                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-            except Exception:
-                pass
+            _release_lock(fh)
         fh.close()
 
 
@@ -177,7 +173,6 @@ def _write_unlocked(data: Dict[str, Any]) -> None:
 def _fresh_entries(
     data: Dict[str, Any], *, now: Optional[float] = None
 ) -> List[Tuple[float, str, Dict[str, Any]]]:
-    """心跳未过期的实例：``(started_at, id, info)``。"""
     now = time.time() if now is None else now
     out: List[Tuple[float, str, Dict[str, Any]]] = []
     for iid, info in (data.get("instances") or {}).items():
@@ -191,7 +186,6 @@ def _fresh_entries(
 
 
 def _prune_by_timestamp(data: Dict[str, Any], *, now: Optional[float] = None) -> List[str]:
-    """扫描全部实例时间戳：``now - heartbeat_at >= 10`` 直接剔除。仅 leader 应调用。"""
     now = time.time() if now is None else now
     removed: List[str] = []
     inst_map = data.get("instances") or {}
@@ -208,7 +202,6 @@ def _prune_by_timestamp(data: Dict[str, Any], *, now: Optional[float] = None) ->
 
 
 def _elect(data: Dict[str, Any], *, now: Optional[float] = None) -> Optional[str]:
-    """在**未过期**实例中选 ``started_at`` 最晚者为 leader（不删条目）。"""
     now = time.time() if now is None else now
     fresh = _fresh_entries(data, now=now)
     if not fresh:
@@ -240,7 +233,6 @@ def _elect(data: Dict[str, Any], *, now: Optional[float] = None) -> Optional[str
 
 
 def mutate(fn) -> Dict[str, Any]:
-    """持锁读改写。**不**清理他人；只更新后按新鲜心跳选举。"""
     with _file_lock():
         data = _read_unlocked()
         fn(data)
@@ -250,7 +242,6 @@ def mutate(fn) -> Dict[str, Any]:
 
 
 def read_instances() -> Dict[str, Any]:
-    """读取并刷新 leader 字段（按新鲜心跳选举）；不清理过期实例。"""
     with _file_lock():
         data = _read_unlocked()
         _elect(data)
@@ -277,7 +268,6 @@ def register_instance(*, parent_pid: Optional[int] = None) -> str:
 
 
 def heartbeat(instance_id: str, *, parent_pid: Optional[int] = None) -> Dict[str, Any]:
-    """刷新本实例心跳；不扫描/清理其他实例。"""
 
     def _op(data: Dict[str, Any]) -> None:
         if parent_pid and not _pid_alive(parent_pid):
@@ -303,56 +293,6 @@ def heartbeat(instance_id: str, *, parent_pid: Optional[int] = None) -> Dict[str
     return mutate(_op)
 
 
-def leader_prune_stale(instance_id: str) -> Dict[str, Any]:
-    """仅当 ``instance_id`` 为当前 leader 时：扫描所有时间戳，``>=10s`` 直接清。"""
-    with _file_lock():
-        data = _read_unlocked()
-        _elect(data)
-        if data.get("leader_id") != instance_id:
-            _write_unlocked(data)
-            return data
-        removed = _prune_by_timestamp(data)
-        _elect(data)
-        if removed:
-            data["last_prune_at"] = time.time()
-            data["last_prune_removed"] = removed
-        _write_unlocked(data)
-        return data
-
-
-def follower_clear_stale_leader(instance_id: str) -> Dict[str, Any]:
-    """非 leader：若 ``now - leader.heartbeat_at >= 10``，清掉该实例并清空 Leader。
-
-    随后按未过期实例重新选举（本实例可能成为新 leader）。
-    """
-    with _file_lock():
-        data = _read_unlocked()
-        now = time.time()
-        lid = data.get("leader_id")
-        # 自己已是登记中的 leader：不走这条路径
-        if lid and lid == instance_id:
-            _elect(data, now=now)
-            _write_unlocked(data)
-            return data
-        cleared: Optional[str] = None
-        if lid:
-            info = (data.get("instances") or {}).get(lid)
-            hb = float(info.get("heartbeat_at") or 0) if isinstance(info, dict) else 0.0
-            if (not isinstance(info, dict)) or _is_stale(hb, now=now):
-                (data.get("instances") or {}).pop(lid, None)
-                data["leader_id"] = None
-                usage = data.get("usage")
-                if isinstance(usage, dict) and (
-                    usage.get("leader_id") == lid
-                    or _is_stale(float(usage.get("published_at") or 0), now=now)
-                ):
-                    data["usage"] = {}
-                cleared = lid
-                data["last_follower_clear_at"] = now
-                data["last_follower_cleared"] = lid
-        _elect(data, now=now)
-        _write_unlocked(data)
-        return data
 
 
 def unregister(instance_id: str) -> None:
@@ -368,13 +308,11 @@ def is_leader(instance_id: str, data: Optional[Dict[str, Any]] = None) -> bool:
 
 
 def online_count(data: Optional[Dict[str, Any]] = None) -> int:
-    """未过期实例数。"""
     doc = data if data is not None else read_instances()
     return len(_fresh_entries(doc))
 
 
 def publish_usage(usage: Dict[str, Any], **extra: Any) -> None:
-    """leader 写回用量摘要（带 leader_id + published_at）。"""
 
     def _op(data: Dict[str, Any]) -> None:
         lid = data.get("leader_id")
@@ -404,6 +342,25 @@ def leader_heartbeat_at(data: Optional[Dict[str, Any]] = None) -> float:
     return float(info.get("heartbeat_at") or 0)
 
 
+def _terminate_pid(pid: int) -> bool:
+    if pid <= 0 or not _pid_alive(pid) or pid == os.getpid():
+        return False
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            h = ctypes.windll.kernel32.OpenProcess(0x0001, False, pid)
+            if not h:
+                return False
+            ctypes.windll.kernel32.TerminateProcess(h, 1)
+            ctypes.windll.kernel32.CloseHandle(h)
+            return True
+        os.kill(pid, 15)
+        return True
+    except Exception:
+        return False
+
+
 def stop_all_instances() -> List[int]:
     killed: List[int] = []
     with _file_lock():
@@ -412,20 +369,19 @@ def stop_all_instances() -> List[int]:
             if not isinstance(info, dict):
                 continue
             pid = int(info.get("pid") or 0)
-            if pid > 0 and _pid_alive(pid) and pid != os.getpid():
-                try:
-                    if os.name == "nt":
-                        import ctypes
-
-                        h = ctypes.windll.kernel32.OpenProcess(0x0001, False, pid)
-                        if h:
-                            ctypes.windll.kernel32.TerminateProcess(h, 1)
-                            ctypes.windll.kernel32.CloseHandle(h)
-                            killed.append(pid)
-                    else:
-                        os.kill(pid, 15)
-                        killed.append(pid)
-                except Exception:
-                    pass
+            if _terminate_pid(pid):
+                killed.append(pid)
         _write_unlocked(_empty())
     return killed
+
+
+def leader_prune_stale(instance_id: str) -> Dict[str, Any]:
+    from sc.run.autoloop import leader_prune_stale as _impl
+
+    return _impl(instance_id)
+
+
+def follower_clear_stale_leader(instance_id: str) -> Dict[str, Any]:
+    from sc.run.autoloop import follower_clear_stale_leader as _impl
+
+    return _impl(instance_id)

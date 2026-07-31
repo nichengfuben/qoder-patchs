@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from sc import instances as inst
+from sc.run import instances as inst
 
 
 def test_elect_latest_started_is_leader(tmp_path, monkeypatch) -> None:
