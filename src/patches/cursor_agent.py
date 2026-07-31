@@ -48,15 +48,14 @@ _SLASH_INJECT = (
     'ue.push({id:"sc",title:"SC",'
     + SLASH_MARKER
     + 'autoExecuteOnAccept:!0,'
-    'description:"Portable Star Cursor switch (pull/usage/token/status/addkey/auto)",'
-    'ghostText:"[pull|usage|token|status|addkey|auto|help] [...]",'
+    'description:"Portable Star Cursor switch (pull/token/status/addkey/auto)",'
+    'ghostText:"[pull|token|status|addkey|auto|help] [...]",'
     'boostedAlts:["starcursor","switch-account"],'
     'args:[{id:"subcommand",required:!1},{id:"rest",required:!1}],'
     "getArgSuggestions:(e,t)=>{"
     'const q=(t[0]||"").trim().toLowerCase();'
     "if(t.length<=1){"
     'const opts=[{value:"pull",description:"Pull token to auth.json",autoExecuteOnAccept:!0},'
-    '{value:"usage",description:"Show usage",autoExecuteOnAccept:!0},'
     '{value:"token",description:"Show local token",autoExecuteOnAccept:!0},'
     '{value:"status",description:"Show status",autoExecuteOnAccept:!0},'
     '{value:"statusline",description:"Print statusline text"},'

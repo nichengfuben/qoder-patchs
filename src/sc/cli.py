@@ -132,27 +132,6 @@ def cmd_pull() -> int:
     return 1
 
 
-def cmd_usage() -> int:
-    token = auth.access_token()
-    if not token:
-        set_action("error", "本地无 Token", last_error="no token")
-        print("本地无 Token，先 sc pull")
-        return 1
-    set_action("polling", "查询用量…")
-    try:
-        usage = api.parse_usage(api.fetch_usage(token))
-    except Exception as exc:
-        set_action("error", f"查询失败: {exc}", last_error=str(exc))
-        print(f"查询失败: {exc}")
-        return 1
-    _snapshot_account(token)
-    _snapshot_usage(usage)
-    set_action("ok", f"usage total={usage['total_pct']}%")
-    print(f"auth: {auth_json_path()}")
-    print(f"total={usage['total_pct']}% auto={usage['auto_pct']}% api={usage['api_pct']}%")
-    return 0
-
-
 def cmd_token() -> int:
     token = auth.access_token()
     path = auth_json_path()
@@ -406,9 +385,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(
             "用法: sc|/sc <命令>\n"
             "  pull          拉号并写入 auth.json（热生效）\n"
-            "  usage         查询当前用量\n"
             "  token         查看本地 Token\n"
-            "  status        配置/进程/实时状态\n"
+            "  status        配置/进程/实时状态（含用量）\n"
             "  statusline    供 Agent statusLine 调用（stdin JSON）\n"
             "  addkey <key>  添加 Star Cursor API Key\n"
             "  auto          后台实时轮询，超限自动换号\n"
@@ -420,8 +398,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
     if cmd == "pull":
         return cmd_pull()
-    if cmd == "usage":
-        return cmd_usage()
     if cmd == "token":
         return cmd_token()
     if cmd == "status":

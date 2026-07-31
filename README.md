@@ -80,7 +80,6 @@ python main.py rollback cursor-agent
 ```text
 /sc help
 /sc pull
-/sc usage
 /sc status
 /sc auto
 ```
@@ -90,7 +89,7 @@ python main.py rollback cursor-agent
 ```bash
 sc addkey sc_xxxxxxxx          # 写入同级 config.json
 sc pull                        # 拉号 → 写 auth.json（热生效）
-sc usage / sc token / sc status
+sc token / sc status
 sc auto                        # 后台轮询，超限自动换号
 sc auto stop
 ```
