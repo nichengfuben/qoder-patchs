@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 """sc 实时状态：写入与 auth 同级的 ``sc_status.json``，供 statusline / ``sc status`` 读取。"""
 
@@ -119,6 +119,22 @@ def _bar(pct: Any, width: int = 30) -> str:
     return "[" + ("█" * filled) + ("░" * (width - filled)) + "]"
 
 
+def _infer_plan_status(d: Dict[str, Any]) -> str:
+    try:
+        p = float(d.get("total_pct")) if d.get("total_pct") is not None else None
+    except Exception:
+        p = None
+    if d.get("is_unlimited"):
+        return "UNLIMITED"
+    if p is None:
+        return "—"
+    if p >= 100:
+        return "LIMIT"
+    if p >= 95:
+        return "NEAR_LIMIT"
+    return "OK"
+
+
 def _plan_badge(d: Dict[str, Any]) -> tuple[str, str]:
     yellow = "\033[33m"
     red = "\033[31m"
@@ -126,31 +142,14 @@ def _plan_badge(d: Dict[str, Any]) -> tuple[str, str]:
     cyan = "\033[36m"
     if d.get("_stale"):
         return "STALE", yellow
-    st = str(d.get("plan_status") or "")
-    if not st:
-        try:
-            p = float(d.get("total_pct")) if d.get("total_pct") is not None else None
-        except Exception:
-            p = None
-        if d.get("is_unlimited"):
-            st = "UNLIMITED"
-        elif p is None:
-            st = "—"
-        elif p >= 100:
-            st = "LIMIT"
-        elif p >= 95:
-            st = "NEAR_LIMIT"
-        else:
-            st = "OK"
-    if st == "UNLIMITED":
-        return "UNLIM", cyan
-    if st == "LIMIT":
-        return "LIMIT", red
-    if st == "NEAR_LIMIT":
-        return "NEAR", yellow
-    if st == "OK":
-        return "OK", green
-    return st[:6], cyan
+    st = str(d.get("plan_status") or "") or _infer_plan_status(d)
+    colors = {
+        "UNLIMITED": ("UNLIM", cyan),
+        "LIMIT": ("LIMIT", red),
+        "NEAR_LIMIT": ("NEAR", yellow),
+        "OK": ("OK", green),
+    }
+    return colors.get(st, (st[:6], cyan))
 
 
 def _visible_len(s: str) -> int:
