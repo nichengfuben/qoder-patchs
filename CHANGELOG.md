@@ -2,6 +2,11 @@
 
 本文件记录 Patcher（原 AgentCLI Patchs）的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.4.6
+
+- **statusLine**：`sc-statusline.cmd` / `sc.ps1` 改为无 BOM 写入；UTF-8 BOM 会破坏 `@echo off`，导致 Agent 底栏刷出整段 cmd 回显并冻住时钟/进度条
+- `sc_status.json` / `sc_instances.json` 读取改用 `utf-8-sig`，兼容被误写入 BOM 的状态文件
+
 ## 2.4.5
 
 - **交互菜单**：应用/回滞补丁改用方向键+Enter 单选（含「全部」），避免 checkbox 未按空格勾选导致“选中不生效”

@@ -233,16 +233,21 @@ def _apply_all_phases(index: Path, target: Path, root: Path | None) -> tuple[lis
     return files, backups, stats
 
 
+def _write_nobom(path: Path, text: str) -> None:
+    """写文本且禁止 UTF-8 BOM（BOM 会让 ``@echo off`` 失效，statusline 回显整段 cmd）。"""
+    path.write_bytes(text.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-8"))
+
+
 def _install_sc_launchers(root: Path) -> list[Path]:
     src = get_project_root() / "src"
     cmd = root / "sc.cmd"
     ps1 = root / "sc.ps1"
     sl_cmd = root / "sc-statusline.cmd"
     boot_ps1 = root / "sc-autoboot.ps1"
-    cmd.write_text(_SC_CMD, encoding="utf-8")
-    ps1.write_text(sc_ps1(src), encoding="utf-8")
-    sl_cmd.write_text(sc_statusline_cmd(src), encoding="utf-8")
-    boot_ps1.write_text(_SC_AUTOBOOT_PS1, encoding="utf-8")
+    _write_nobom(cmd, _SC_CMD)
+    _write_nobom(ps1, sc_ps1(src))
+    _write_nobom(sl_cmd, sc_statusline_cmd(src))
+    _write_nobom(boot_ps1, _SC_AUTOBOOT_PS1)
     return [cmd, ps1, sl_cmd, boot_ps1]
 
 
