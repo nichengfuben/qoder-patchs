@@ -66,6 +66,12 @@ def _snapshot_usage(usage: dict) -> None:
         included=usage.get("included"),
         bonus=usage.get("bonus"),
         total_tokens=usage.get("total"),
+        used=usage.get("used"),
+        remaining=usage.get("remaining"),
+        plan_status=usage.get("status"),
+        membership=usage.get("membership"),
+        is_unlimited=usage.get("is_unlimited"),
+        plan_message=usage.get("message") or None,
     )
 
 

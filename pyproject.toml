@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentcli-patchs"
-version = "2.1.2"
+version = "2.1.3"
 description = "Agent CLI 补丁管理：Qoder Win10 警告、Cursor Agent auth 热更新与 /sc 便携换号"
 readme = "README.md"
 license = { text = "MIT" }

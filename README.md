@@ -103,13 +103,13 @@ apply `cursor-agent` 后会：
 2. 写入/合并 `~/.cursor/cli-config.json` 的 `statusLine`，指向上述命令
 3. 运行时把完整状态写入 `%APPDATA%\Cursor\sc_status.json`（与 auth 同级）
 
-Agent 提示符上方会显示约 3 行：
+Agent 提示符上方显示**一行**紧凑状态（对齐 client.py 信息密度）：
 
-- auto 开/关、当前动作（polling/pulling/switching）、轮询序号、阈值
-- 账号 email / card / uid、用量 total/auto/api
-- 正在做什么的 message、上次更新时间、错误
+- 常态：`SC A OK 67.2% [██████░░░░] a12.0% p55.0% user@x/pro #12`
+- 刷新额度：`SC A ↻#12 OK 67.2% […] …`（`↻` 表示正在/刚查用量）
+- 换号/拉号：`SC SWITCH 96.0% […] thr>=95% → user@x 超阈值…`（高亮）
 
-`/sc status` 会刷新并打印同样信息。`sc auto` 日志另写 `sc_auto.log`。
+`A`=auto 开，`-`=关。详细面板仍用 `/sc status`。
 
 **重启一次 `ag`** 后 statusLine 生效。若你已有自定义 statusLine，apply 会覆盖 `statusLine` 字段（其它 cli-config 项保留）。
 ---

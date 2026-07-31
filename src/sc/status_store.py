@@ -47,89 +47,154 @@ def set_action(action: str, message: str = "", **extra: Any) -> None:
     write_status(action=action, message=message, **extra)
 
 
+def _pct(v: Any) -> str:
+    if v is None:
+        return "-"
+    try:
+        return f"{float(v):.1f}%"
+    except Exception:
+        return str(v)
+
+
+def _bar(pct: Any, width: int = 10) -> str:
+    try:
+        p = max(0.0, min(100.0, float(pct)))
+    except Exception:
+        return "[" + ("░" * width) + "]"
+    filled = int(round(width * p / 100.0))
+    return "[" + ("█" * filled) + ("░" * (width - filled)) + "]"
+
+
+def _short_email(email: str, max_len: int = 18) -> str:
+    e = (email or "-").strip() or "-"
+    if len(e) <= max_len:
+        return e
+    if "@" in e:
+        local, _, domain = e.partition("@")
+        keep = max(3, max_len - len(domain) - 2)
+        return f"{local[:keep]}…@{domain}"
+    return e[: max_len - 1] + "…"
+
+
+def _plan_badge(d: Dict[str, Any]) -> tuple[str, str]:
+    """返回 (彩色标签, ANSI色)。对齐 client: OK / NEAR_LIMIT / LIMIT / UNLIMITED。"""
+    yellow = "\033[33m"
+    red = "\033[31m"
+    green = "\033[32m"
+    cyan = "\033[36m"
+    st = str(d.get("plan_status") or "")
+    if not st:
+        try:
+            p = float(d.get("total_pct")) if d.get("total_pct") is not None else None
+        except Exception:
+            p = None
+        if d.get("is_unlimited"):
+            st = "UNLIMITED"
+        elif p is None:
+            st = "—"
+        elif p >= 100:
+            st = "LIMIT"
+        elif p >= 95:
+            st = "NEAR_LIMIT"
+        else:
+            st = "OK"
+    if st == "UNLIMITED":
+        return "UNLIM", cyan
+    if st == "LIMIT":
+        return "LIMIT", red
+    if st == "NEAR_LIMIT":
+        return "NEAR", yellow
+    if st == "OK":
+        return "OK", green
+    return st[:6], cyan
+
+
 def format_status_lines(
     data: Optional[Dict[str, Any]] = None,
     *,
     model: str = "",
     width: int = 0,
 ) -> list[str]:
-    """生成 statusline 多行文本（含 ANSI 淡色）。"""
+    """紧凑一行（必要时两行）：完整但不占空间，突出刷新额度 / 换号。"""
     d = data if data is not None else read_status()
     dim = "\033[90m"
     cyan = "\033[36m"
     green = "\033[32m"
     yellow = "\033[33m"
     red = "\033[31m"
+    bold = "\033[1m"
     reset = "\033[0m"
 
-    auto_on = bool(d.get("auto_running"))
     action = str(d.get("action") or "idle")
-    msg = str(d.get("message") or "")
-    email = str(d.get("email") or "-")
-    card = str(d.get("card") or "-")
-    uid = str(d.get("uid") or "-")
-    if len(uid) > 12:
-        uid = uid[:6] + "…" + uid[-4:]
+    auto_on = bool(d.get("auto_running"))
+    email = _short_email(str(d.get("email") or "-"))
+    membership = str(d.get("membership") or d.get("card") or "-")
+    if membership == "-":
+        membership = str(d.get("card") or "-")
     total = d.get("total_pct")
     auto_pct = d.get("auto_pct")
     api_pct = d.get("api_pct")
     poll_n = d.get("poll_n")
-    interval = d.get("poll_interval")
     threshold = d.get("usage_threshold")
-    auto_pid = d.get("auto_pid")
-    err = str(d.get("last_error") or "")
-    updated = str(d.get("updated_iso") or "-")
-    keys_n = d.get("keys")
+    err = str(d.get("last_error") or "").strip()
+    msg = str(d.get("message") or "").strip()
+    badge, badge_color = _plan_badge(d)
 
-    def pct(v: Any) -> str:
-        if v is None:
-            return "-"
-        try:
-            return f"{float(v):.1f}%"
-        except Exception:
-            return str(v)
+    auto_mark = f"{green}A{reset}" if auto_on else f"{dim}-{reset}"
+    bar = _bar(total)
+    usage = f"{_pct(total)} {bar}"
+    detail = f"a{_pct(auto_pct)} p{_pct(api_pct)}"
+    acct = f"{email}" + (f"/{membership}" if membership and membership != "-" else "")
+    tick = f"#{poll_n}" if poll_n is not None else ""
 
+    # ── 换号 / 拉号：高亮一行 ──────────────────────────────────────────
     if action in ("pulling", "switching"):
-        act_color = yellow
-    elif action in ("error",):
-        act_color = red
-    elif action in ("polling", "ok"):
-        act_color = green
+        label = "SWITCH" if action == "switching" else "PULL"
+        line = (
+            f"{cyan}SC{reset} {bold}{yellow}{label}{reset} "
+            f"{usage} thr>={threshold if threshold is not None else 95}% "
+            f"→ {acct}"
+        )
+        if tick:
+            line += f" {dim}{tick}{reset}"
+        if msg:
+            # 只留短事件语
+            short = msg if len(msg) <= 36 else msg[:35] + "…"
+            line += f" {yellow}{short}{reset}"
+        lines = [line]
+    # ── 刷新额度（polling）：突出 ↻ ───────────────────────────────────
+    elif action == "polling":
+        line = (
+            f"{cyan}SC{reset} {auto_mark} {green}↻{reset}{tick or ''} "
+            f"{badge_color}{badge}{reset} {usage} {dim}{detail}{reset} {acct}"
+        )
+        lines = [line]
+    # ── 错误：一行 ────────────────────────────────────────────────────
+    elif action == "error":
+        err_s = err or msg or "error"
+        if len(err_s) > 42:
+            err_s = err_s[:41] + "…"
+        line = (
+            f"{cyan}SC{reset} {auto_mark} {red}ERR{reset} {usage} {acct} "
+            f"{red}{err_s}{reset}"
+        )
+        lines = [line]
+    # ── 常态：一行完整摘要 ────────────────────────────────────────────
     else:
-        act_color = cyan
+        line = (
+            f"{cyan}SC{reset} {auto_mark} {badge_color}{badge}{reset} "
+            f"{usage} {dim}{detail}{reset} {acct}"
+        )
+        if tick:
+            line += f" {dim}{tick}{reset}"
+        if model:
+            line += f" {dim}{model}{reset}"
+        lines = [line]
 
-    auto_txt = f"{green}ON{reset} pid={auto_pid or '?'}" if auto_on else f"{dim}OFF{reset}"
-    line1 = (
-        f"{cyan}SC{reset} auto={auto_txt}  "
-        f"act={act_color}{action}{reset}"
-    )
-    if poll_n is not None:
-        line1 += f"  #{poll_n}"
-    if interval is not None:
-        line1 += f"  poll={interval}s"
-    if threshold is not None:
-        line1 += f"  thr={threshold}%"
-    if keys_n is not None:
-        line1 += f"  keys={keys_n}"
-
-    line2 = (
-        f"{dim}acct{reset} {email}  card={card}  uid={uid}  "
-        f"usage total={pct(total)} auto={pct(auto_pct)} api={pct(api_pct)}"
-    )
-
-    line3_parts = []
-    if msg:
-        line3_parts.append(msg)
-    if err:
-        line3_parts.append(f"{red}err:{err}{reset}")
-    line3_parts.append(f"{dim}upd {updated}{reset}")
-    if model:
-        line3_parts.append(f"{dim}model {model}{reset}")
-    line3 = "  |  ".join(line3_parts)
-
-    lines = [line1, line2, line3]
-    if width and width > 20:
-        lines = [ln if _visible_len(ln) <= width else _truncate_ansi(ln, width) for ln in lines]
+    if width and width > 24:
+        lines = [
+            ln if _visible_len(ln) <= width else _truncate_ansi(ln, width) for ln in lines
+        ]
     return lines
 
 
@@ -149,8 +214,7 @@ def _visible_len(s: str) -> int:
 def _truncate_ansi(s: str, width: int) -> str:
     if _visible_len(s) <= width:
         return s
-    # naive strip then pad with reset
-    plain = []
+    plain: list[str] = []
     i = 0
     while i < len(s) and len(plain) < max(0, width - 1):
         if s[i] == "\033":

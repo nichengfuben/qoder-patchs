@@ -86,6 +86,7 @@ def extract_tokens(data: Dict[str, Any]) -> Tuple[str, str, str, str]:
 
 
 def parse_usage(data: Dict[str, Any]) -> Dict[str, Any]:
+    """对齐 Common/client.py：auto/api 均分总用量，并给出 OK/NEAR_LIMIT/LIMIT。"""
     plan = (data.get("individualUsage") or {}).get("plan") or {}
     breakdown = plan.get("breakdown") or {}
 
@@ -95,15 +96,50 @@ def parse_usage(data: Dict[str, Any]) -> Dict[str, Any]:
         except Exception:
             return 0.0
 
+    total = f(breakdown.get("total"))
+    included = f(breakdown.get("included"))
+    bonus = f(breakdown.get("bonus"))
+    auto_pct = f(plan.get("autoPercentUsed"))
+    api_pct = f(plan.get("apiPercentUsed"))
+    # client.py：总用量 = (auto + api) / 2
+    total_pct = (auto_pct + api_pct) / 2.0 if (auto_pct > 0 or api_pct > 0) else f(
+        plan.get("totalPercentUsed")
+    )
+    used = round(total * total_pct / 100.0, 2) if total > 0 else 0.0
+    remaining = max(total - used, 0.0)
+    membership = str(data.get("membershipType") or "-")
+    is_unlimited = bool(data.get("isUnlimited", False))
+    msg = str(
+        data.get("autoModelSelectedDisplayMessage")
+        or data.get("namedModelSelectedDisplayMessage")
+        or ""
+    )
+    if is_unlimited:
+        status = "UNLIMITED"
+    elif total_pct >= 100:
+        status = "LIMIT"
+    elif total_pct >= 95:
+        status = "NEAR_LIMIT"
+    else:
+        status = "OK"
     return {
-        "total_pct": f(plan.get("totalPercentUsed")),
-        "auto_pct": f(plan.get("autoPercentUsed")),
-        "api_pct": f(plan.get("apiPercentUsed")),
-        "included": f(breakdown.get("included")),
-        "bonus": f(breakdown.get("bonus")),
-        "total": f(breakdown.get("total")),
+        "total": total,
+        "used": used,
+        "remaining": remaining,
+        "included": included,
+        "bonus": bonus,
+        "total_pct": total_pct,
+        "auto_pct": auto_pct,
+        "api_pct": api_pct,
+        "status": status,
+        "membership": membership,
+        "is_unlimited": is_unlimited,
+        "message": msg,
+        "billing_end": str(data.get("billingCycleEnd") or ""),
     }
 
 
 def is_limit_reached(usage: Dict[str, Any], threshold: float) -> bool:
+    if usage.get("is_unlimited"):
+        return False
     return float(usage.get("total_pct") or 0) >= float(threshold)

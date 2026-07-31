@@ -2,6 +2,11 @@
 
 本文件记录 AgentCLI Patchs 的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.1.3
+
+- statusLine 改为一行紧凑格式（对齐 client.py）：突出 `↻` 刷新额度与 `SWITCH`/`PULL` 换号
+- `parse_usage` 对齐 client：（auto+api）/2、OK/NEAR_LIMIT/LIMIT/UNLIMITED
+
 ## 2.1.2
 
 - `sc`：写入 `sc_status.json` 实时状态；新增 `sc statusline` 供 Agent CLI statusLine
