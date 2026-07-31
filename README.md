@@ -59,11 +59,13 @@ python main.py rollback cursor-agent
 
 ### `cursor-agent` 做了什么
 
-逆向 `%LOCALAPPDATA%\cursor-agent\versions\<ver>\index.js` 中 AuthStorage：
+逆向 `%LOCALAPPDATA%\cursor-agent\versions\<ver>\`：
 
-- 原逻辑：`getAccessToken` 等优先返回内存 `cachedAccessToken`
-- 补丁后：每次 `readAuthData()` 读盘，外部改写 `%APPDATA%\Cursor\auth.json` **无需重启** cursor-agent
-- 同时在安装根写入 `sc.cmd` / `sc.ps1`
+- **Auth 热读**（`index.js` AuthStorage）：去掉 `cachedAccessToken` 短路，每次 `readAuthData()` 读盘；外部改写 `%APPDATA%\Cursor\auth.json` **无需再为换号重启** agent
+- **Agent 内置 `/sc` slash**（webpack chunk，如 `5305.index.js`）：在 `/mcp` 后注册 builtin `/sc`；仅装 `sc.cmd` **不会**让交互框里的 `/sc` 生效（会落到技能模糊匹配）
+- **便携启动器**：安装根写入 `sc.cmd` / `sc.ps1`（`PYTHONPATH` 指向本仓库 `src`）
+
+应用补丁后需**重启一次** `cursor-agent` / `ag`，slash 表才会重新加载。
 
 ### `/sc` 便携换号
 
@@ -73,13 +75,23 @@ python main.py rollback cursor-agent
 - macOS: `~/.cursor/config.json` + `auth.json`
 - Linux: `$XDG_CONFIG_HOME/cursor/`（或 `~/.config/cursor/`）
 
+在 **Agent 输入框**（与 `/mcp` 同级）：
+
+```text
+/sc help
+/sc pull
+/sc usage
+/sc auto
+```
+
+或在 shell：
+
 ```bash
 sc addkey sc_xxxxxxxx          # 写入同级 config.json
 sc pull                        # 拉号 → 写 auth.json（热生效）
 sc usage / sc token / sc status
 sc auto                        # 后台轮询，超限自动换号
 sc auto stop
-# 等价：/sc pull  /sc auto
 ```
 
 ---

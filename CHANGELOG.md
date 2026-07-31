@@ -2,6 +2,11 @@
 
 本文件记录 AgentCLI Patchs 的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.1.1
+
+- `cursor-agent`：向 Agent slash 面板注入 builtin `/sc`（修复仅装 `sc.cmd` 时交互框 `/sc` 落到技能列表的问题）
+- `sc.ps1`：安装时写入仓库 `src` 的绝对 `PYTHONPATH`
+
 ## 2.1.0 — 2026-07-31
 
 ### Changed
