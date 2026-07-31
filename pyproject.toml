@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "patcher"
-version = "2.4.0"
+version = "2.4.1"
 description = "Patcher：Cursor/Qoder CLI 补丁管理，移除 Win10 警告、Cursor Agent auth 热更新与 /sc 便携换号"
 readme = "README.md"
 license = { text = "MIT" }

@@ -2,6 +2,11 @@
 
 本文件记录 Patcher（原 AgentCLI Patchs）的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.4.1
+
+- CI：去除若干源文件 UTF-8 BOM；展平 menu / status badge 嵌套以通过 Linux achecker
+- Release 工作流：tag 已存在时改为上传构建产物
+
 ## 2.4.0
 
 - 项目更名为 **Patcher**（包名 `patcher`，仓库 `nichengfuben/Patcher`）
