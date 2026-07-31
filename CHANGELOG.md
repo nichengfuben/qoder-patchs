@@ -2,6 +2,11 @@
 
 本文件记录 AgentCLI Patchs 的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.3.2
+
+- GitHub 仓库更名为 **AgentCLI-Patchs**
+- 新增 `sc doctor`：检查 hot-auth/disk Bearer 标记、`auth.sub` 与 `agentcli-last-bearer.json` 对照
+
 ## 2.3.1
 
 - **hot-auth disk Bearer**：agent 主链路另有内联 `ephemeralToken:R`；每次设 `Authorization` 前 `readFileSync(auth.json)` 强制覆盖，并写 `agentcli-last-bearer.json` 对照 `sub`

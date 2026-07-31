@@ -404,6 +404,76 @@ def cmd_token() -> int:
     return 0
 
 
+def cmd_doctor() -> int:
+    """自检：hot-auth 补丁标记、auth.json sub、agentcli-last-bearer 对照。"""
+    from patches.cursor_agent import (
+        DISK_MARKER,
+        EPHEMERAL_NULL_MARKER,
+        MARKER,
+        CursorAgentPatch,
+    )
+    from sc.paths import find_cursor_agent_bundle
+
+    ok = True
+    bundle = find_cursor_agent_bundle()
+    print(f"bundle: {bundle or '(missing)'}")
+    if bundle is None:
+        print("FAIL: 未找到 cursor-agent versions/*/index.js")
+        return 1
+
+    patch = CursorAgentPatch()
+    status = patch.check(bundle)
+    print(f"patch:  {status}")
+    index = bundle / "index.js"
+    text = index.read_text(encoding="utf-8", errors="ignore")
+    checks = {
+        "hot-auth marker": MARKER in text,
+        "ephemeral null": EPHEMERAL_NULL_MARKER in text,
+        "disk bearer": DISK_MARKER in text,
+        "no ephemeralToken:R": "ephemeralToken:R," not in text,
+        "no cache early-return": "if(this.cachedAccessToken)return this.cachedAccessToken" not in text,
+    }
+    for name, good in checks.items():
+        print(f"  {'OK' if good else 'FAIL'}: {name}")
+        ok = ok and good
+
+    auth_path = auth_json_path()
+    sub = auth.token_subject()
+    print(f"auth:   {auth_path}")
+    print(f"auth.sub: {sub or '(none)'}")
+    if not sub:
+        print("FAIL: auth.json 无可用 accessToken")
+        ok = False
+
+    bearer_path = cursor_config_dir() / "agentcli-last-bearer.json"
+    print(f"bearer: {bearer_path}")
+    if bearer_path.is_file():
+        try:
+            doc = json.loads(bearer_path.read_text(encoding="utf-8"))
+            bsub = doc.get("sub")
+            print(f"bearer.sub: {bsub}  ts={doc.get('ts')} pid={doc.get('pid')}")
+            if sub and bsub and sub != bsub:
+                print("FAIL: auth.sub ≠ bearer.sub — Agent 可能未重启或仍用旧进程")
+                ok = False
+            elif sub and bsub and sub == bsub:
+                print("OK: auth.sub == bearer.sub")
+        except Exception as exc:
+            print(f"FAIL: 无法解析 last-bearer: {exc}")
+            ok = False
+    else:
+        print("WARN: 尚无 agentcli-last-bearer.json（重启 ag 并发一条消息后生成）")
+
+    ps1 = Path(os.environ.get("LOCALAPPDATA", "")) / "cursor-agent" / "cursor-agent.ps1"
+    if ps1.is_file():
+        ps = ps1.read_text(encoding="utf-8", errors="ignore")
+        cache_off = "disable NODE_COMPILE_CACHE" in ps
+        print(f"  {'OK' if cache_off else 'FAIL'}: NODE_COMPILE_CACHE disabled in cursor-agent.ps1")
+        ok = ok and cache_off
+
+    print("doctor: " + ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
+
+
 def cmd_addkey(key: str) -> int:
     cfg = load_config()
     keys = list(cfg.get("api_keys") or [])
@@ -965,6 +1035,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             "  statusline         Agent statusLine\n"
             "  pull / usage       手动拉号 / 手动刷新用量（调试）\n"
             "  token / addkey    Token / API Key\n"
+            "  doctor             自检 hot-auth 补丁与 Bearer sub 对照\n"
             f"config:     {config_json_path()}\n"
             f"auth:       {auth_json_path()}\n"
             f"status:     {status_json_path()}\n"
@@ -977,6 +1048,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return cmd_usage()
     if cmd == "token":
         return cmd_token()
+    if cmd == "doctor":
+        return cmd_doctor()
     if cmd == "status":
         return cmd_status()
     if cmd == "statusline":
