@@ -1,7 +1,7 @@
 # Architecture / 架构
 
-This document describes the system architecture of qoder-patchs, including component relationships, data flow, configuration system, and extension points.
-本文档描述 qoder-patchs 的系统架构, 包括组件关系, 数据流, 配置系统和扩展点.
+This document describes the system architecture of agentcli-patchs, including component relationships, data flow, configuration system, and extension points.
+本文档描述 agentcli-patchs 的系统架构, 包括组件关系, 数据流, 配置系统和扩展点.
 
 ---
 
@@ -106,8 +106,8 @@ Defines the contract all patches must implement:
 Two-layer auto-discovery mechanism:
 两层自动发现机制:
 
-1. **Built-in patches** -- Scans `qoder_patchs.patches` package via `pkgutil.iter_modules()`. Modules starting with `_` are excluded.
-2. **Third-party patches** -- Discovers via `importlib.metadata.entry_points()` under the `qoder_patchs.patches` group.
+1. **Built-in patches** -- Scans `patches` package via `pkgutil.iter_modules()`. Modules starting with `_` are excluded.
+2. **Third-party patches** -- Discovers via `importlib.metadata.entry_points()` under the `patches` group.
 
 #### `engine.py` -- Execution Engine / 执行引擎
 
@@ -137,7 +137,7 @@ Configuration path resolution (`resolve_config_path`):
 
 ```
 Priority 1: --config CLI argument
-Priority 2: QODER_PATCHS_CONFIG env var
+Priority 2: AGENTCLI_PATCHS_CONFIG env var
 Priority 3: Project root config.toml
 Priority 4: User config dir (platformdirs)
 Priority 5: Built-in defaults
@@ -239,7 +239,7 @@ Multi-strategy bundle directory discovery with 6 fallback strategies:
 | Strategy | Method |
 |----------|--------|
 | A | `config.paths.bundle_dir` |
-| B | `QODER_PATCHS_BUNDLE` env var |
+| B | `AGENTCLI_PATCHS_BUNDLE` env var |
 | C | `npm prefix -g` |
 | D | `APPDATA`-based path |
 | E | Common installation paths |
@@ -308,13 +308,13 @@ User Input
 [registry.py] PatchRegistry()
     |
     +-- discover_builtin()
-    |       --> pkgutil.iter_modules("qoder_patchs.patches")
+    |       --> pkgutil.iter_modules("patches")
     |       --> for each module (skip _private):
     |           --> import module
     |           --> find PatchBase subclasses
     |           --> instantiate and register()
     |
-    +-- discover_entry_points("qoder_patchs.patches")
+    +-- discover_entry_points("patches")
             --> importlib.metadata.entry_points()
             --> for each entry point:
                 --> load class
@@ -381,7 +381,7 @@ Create a new module in `patches/` inheriting from `PatchBase`. The registry auto
 External packages can register patches via their own `pyproject.toml`:
 
 ```toml
-[project.entry-points."qoder_patchs.patches"]
+[project.entry-points."patches"]
 my-external-patch = "my_package.patches:MyExternalPatch"
 ```
 

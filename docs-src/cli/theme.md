@@ -1,7 +1,7 @@
 # Theme Customization Guide / 主题定制指南
 
-This guide explains the blue theme system used by qoder-patchs, including the color palette, Rich theme configuration, Questionary styling, charmap-based ASCII art, and how to customize them.
-本指南说明 qoder-patchs 使用的蓝色主题系统, 包括调色板, Rich 主题配置, Questionary 样式, charmap ASCII 艺术, 以及如何自定义.
+This guide explains the blue theme system used by agentcli-patchs, including the color palette, Rich theme configuration, Questionary styling, charmap-based ASCII art, and how to customize them.
+本指南说明 agentcli-patchs 使用的蓝色主题系统, 包括调色板, Rich 主题配置, Questionary 样式, charmap ASCII 艺术, 以及如何自定义.
 
 ---
 
@@ -94,8 +94,8 @@ BLUE_THEME = Theme({
 
 ### Modifying Colors / 修改颜色
 
-To change the theme colors, edit the `BLUE_THEME` definition in `src/qoder_patchs/cli/theme.py`:
-要修改主题颜色, 编辑 `src/qoder_patchs/cli/theme.py` 中的 `BLUE_THEME` 定义:
+To change the theme colors, edit the `BLUE_THEME` definition in `src/cli/theme.py`:
+要修改主题颜色, 编辑 `src/cli/theme.py` 中的 `BLUE_THEME` 定义:
 
 ```python
 # Example: Change to a green theme
@@ -221,7 +221,7 @@ Use `render_text()` to convert a string into 6-line ASCII art:
 使用 `render_text()` 将字符串转换为 6 行 ASCII 艺术:
 
 ```python
-from qoder_patchs.cli.charmap import render_text
+from cli.charmap import render_text
 
 lines = render_text("QODER")
 # Returns 6 strings, each one row of the art:
@@ -242,7 +242,7 @@ Character lookup order:
 `render_gradient_banner()` 将渐变颜色应用到渲染的 ASCII 艺术:
 
 ```python
-from qoder_patchs.cli.charmap import (
+from cli.charmap import (
     render_text,
     render_gradient_banner,
     BLUE_GRADIENT_PALETTE,
@@ -346,7 +346,7 @@ Module-level helpers in `ui.py` (ported from warp.py) provide low-level ANSI for
 `ui.py` 中的模块级辅助函数 (从 warp.py 移植) 提供低级 ANSI 格式化:
 
 ```python
-from qoder_patchs.cli.ui import (
+from cli.ui import (
     color_text,      # Wrap text in ANSI color
     kv_line,         # Key-value formatted line
     status_dot,      # Colored status circle

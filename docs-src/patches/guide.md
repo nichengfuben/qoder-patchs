@@ -1,14 +1,14 @@
 # Patch Development Guide / 补丁开发指南
 
-This guide walks you through creating a new patch for qoder-patchs, from initial setup to testing and registration.
-本指南带你从零开始为 qoder-patchs 创建新补丁, 包括初始设置, 测试和注册.
+This guide walks you through creating a new patch for agentcli-patchs, from initial setup to testing and registration.
+本指南带你从零开始为 agentcli-patchs 创建新补丁, 包括初始设置, 测试和注册.
 
 ---
 
 ## Overview / 概述
 
-Every patch in qoder-patchs is a Python class that inherits from `PatchBase` and implements four abstract members:
-qoder-patchs 中的每个补丁都是一个继承 `PatchBase` 的 Python 类, 需实现四个抽象成员:
+Every patch in agentcli-patchs is a Python class that inherits from `PatchBase` and implements four abstract members:
+agentcli-patchs 中的每个补丁都是一个继承 `PatchBase` 的 Python 类, 需实现四个抽象成员:
 
 | Member | Type | Description | 说明 |
 |--------|------|-------------|------|
@@ -23,11 +23,11 @@ qoder-patchs 中的每个补丁都是一个继承 `PatchBase` 的 Python 类, �
 
 ### Step 1: Create the Module / 创建模块
 
-Create a new file in `src/qoder_patchs/patches/`:
-在 `src/qoder_patchs/patches/` 中创建新文件:
+Create a new file in `src/patches/`:
+在 `src/patches/` 中创建新文件:
 
 ```
-src/qoder_patchs/patches/my_patch.py
+src/patches/my_patch.py
 ```
 
 Use snake_case naming. Avoid leading underscores (`_`) -- those are excluded from auto-discovery.
@@ -47,7 +47,7 @@ from typing import Optional
 
 from loguru import logger
 
-from qoder_patchs.core.patch_base import (
+from core.patch_base import (
     PatchBase,
     PatchMetadata,
     PatchResult,
@@ -198,11 +198,11 @@ Two options:
 
 **Option A: Built-in (auto-discovery) / 内置 (自动发现)**
 
-Import the class in `src/qoder_patchs/patches/__init__.py`:
-在 `src/qoder_patchs/patches/__init__.py` 中导入:
+Import the class in `src/patches/__init__.py`:
+在 `src/patches/__init__.py` 中导入:
 
 ```python
-from qoder_patchs.patches.my_patch import MyPatch
+from patches.my_patch import MyPatch
 
 __all__ = ["Win10WarningPatch", "MyPatch"]
 ```
@@ -216,8 +216,8 @@ Add to `pyproject.toml`:
 添加到 `pyproject.toml`:
 
 ```toml
-[project.entry-points."qoder_patchs.patches"]
-my-patch = "qoder_patchs.patches.my_patch:MyPatch"
+[project.entry-points."patches"]
+my-patch = "patches.my_patch:MyPatch"
 ```
 
 This is also how third-party packages register external patches.
@@ -227,7 +227,7 @@ This is also how third-party packages register external patches.
 
 ```bash
 python -c "
-from qoder_patchs.core.registry import PatchRegistry
+from core.registry import PatchRegistry
 r = PatchRegistry()
 r.discover_builtin()
 print('Registered patches:', r.names())
@@ -293,7 +293,7 @@ The `templates.py` module provides reusable helpers:
 `templates.py` 模块提供可复用的辅助函数:
 
 ```python
-from qoder_patchs.patches.templates import (
+from patches.templates import (
     read_file_text,        # UTF-8 file reader
     create_inline_backup,  # Timestamped backup creator
     safe_regex_replace,    # Regex replace with verification
@@ -304,7 +304,7 @@ For production patches, prefer using `BackupManager`:
 生产环境补丁建议使用 `BackupManager`:
 
 ```python
-from qoder_patchs.utils.backup import BackupManager
+from utils.backup import BackupManager
 
 bm = BackupManager(keep_count=3)
 backup_path = bm.create_backup(fpath)
@@ -325,8 +325,8 @@ Create tests in `test/patches/test_my_patch.py`:
 
 import pytest
 from pathlib import Path
-from qoder_patchs.patches.my_patch import MyPatch
-from qoder_patchs.core.patch_base import PatchStatus
+from patches.my_patch import MyPatch
+from core.patch_base import PatchStatus
 
 
 class TestMyPatch:
@@ -411,7 +411,7 @@ pytest test/patches/test_my_patch.py -v
 pytest
 
 # Run with coverage / 带覆盖率运行
-pytest --cov=qoder_patchs --cov-report=term-missing
+pytest --cov=agentcli_patchs --cov-report=term-missing
 ```
 
 ---
@@ -438,7 +438,7 @@ pytest --cov=qoder_patchs --cov-report=term-missing
 
 ## Checklist / 检查清单
 
-- [ ] Created `src/qoder_patchs/patches/<name>.py`
+- [ ] Created `src/patches/<name>.py`
 - [ ] Class inherits from `PatchBase`
 - [ ] `metadata` returns `PatchMetadata` with unique name and correct target files
 - [ ] `check()` inspects files and returns appropriate `PatchStatus`

@@ -1,4 +1,4 @@
-"""Tests for qoder_patchs.patches.win10_warning module.
+"""Tests for patches.win10_warning module.
 
 This is the MOST IMPORTANT test file. It covers the complete lifecycle
 of the Windows 10 warning suppression patch:
@@ -18,14 +18,14 @@ from pathlib import Path
 
 import pytest
 
-from qoder_patchs.core.patch_base import PatchResult, PatchStatus
-from qoder_patchs.patches.win10_detect import (
+from core.patch_base import PatchResult, PatchStatus
+from patches.win10_detect import (
     EXPORT_PATTERN,
     FALLBACK_PATTERN,
     PATCHED_PATTERN,
     detect_func_name,
 )
-from qoder_patchs.patches.win10_warning import Win10WarningPatch
+from patches.win10_warning import Win10WarningPatch
 
 
 @pytest.fixture()

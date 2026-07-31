@@ -1,4 +1,4 @@
-"""Tests for qoder_patchs.core.patch_base module.
+"""Tests for core.patch_base module.
 
 Covers PatchMetadata immutability, PatchStatus enum values,
 PatchResult properties, PatchBase.validate, and PatchBase.info.
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from qoder_patchs.core.patch_base import (
+from core.patch_base import (
     PatchBase,
     PatchMetadata,
     PatchResult,

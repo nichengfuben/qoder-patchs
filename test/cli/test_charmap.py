@@ -1,4 +1,4 @@
-"""Tests for qoder_patchs.cli.charmap module.
+"""Tests for cli.charmap module.
 
 Covers render_text, unknown character handling, and render_gradient_banner.
 """
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from qoder_patchs.cli.charmap import (
+from cli.charmap import (
     BLUE_GRADIENT_PALETTE,
     CHAR_MAP,
     render_gradient_banner,
