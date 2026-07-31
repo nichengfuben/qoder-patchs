@@ -1,13 +1,13 @@
 """Interactive menus for Qoder Patch Manager.
 
-Provides Questionary-based interactive menus with arrow-key navigation,
-multi-select checkboxes, and yes/no confirmation dialogs.  All menus
-handle ``KeyboardInterrupt`` (Ctrl+C) gracefully by returning a sentinel
-value indicating the user cancelled.
+Provides Questionary-based interactive menus with arrow-key navigation
+and yes/no confirmation dialogs.  All menus handle ``KeyboardInterrupt``
+(Ctrl+C) gracefully by returning a sentinel value indicating the user
+cancelled.
 
 Functions:
     main_menu: Display the main operation menu.
-    patch_select_menu: Multi-select patches for application.
+    patch_select_menu: Pick one/all patches for apply or rollback.
     confirm: Yes/no confirmation prompt.
     config_menu: Interactive configuration editor.
 """
@@ -67,10 +67,11 @@ def main_menu() -> str:
 
 
 def patch_select_menu(patches: dict[str, Any]) -> list[str]:
-    """Display a multi-select checkbox of available patches.
+    """Display a patch picker and return selected patch names.
 
-    Each patch is shown with its display name and version.  The user can
-    toggle individual patches with Space and confirm with Enter.
+    Uses arrow-key ``select`` (Enter confirms). Multi-select checkboxes were
+    confusing: highlighting an item without Space left the selection empty,
+    so apply/rollback appeared to do nothing.
 
     Args:
         patches: A dict mapping patch names to :class:`PatchBase` instances
@@ -79,42 +80,39 @@ def patch_select_menu(patches: dict[str, Any]) -> list[str]:
 
     Returns:
         A list of selected patch name strings.  Returns an empty list if
-        the user cancels (Ctrl+C) or selects nothing.
+        the user cancels (Ctrl+C) or chooses cancel.
     """
     if not patches:
         return []
 
     style = get_questionary_style()
-
-    # Build choices: display label -> internal name
+    names = list(patches.keys())
     choices: list[questionary.Choice] = []
-    for name, patch in patches.items():
+    if len(names) > 1:
+        choices.append(questionary.Choice(title="全部补丁", value=list(names)))
+    for name in names:
+        patch = patches[name]
         meta = patch.metadata if hasattr(patch, "metadata") else None
         if meta is not None:
             label = f"{meta.display_name} (v{meta.version})"
         else:
             label = name
-        choices.append(questionary.Choice(title=label, value=name))
+        choices.append(questionary.Choice(title=label, value=[name]))
+    choices.append(questionary.Choice(title="取消", value=[]))
 
     try:
-        answer = questionary.checkbox(
-            "选择要应用的补丁:",
-            # 选择要应用的补丁:
+        answer = questionary.select(
+            "选择要操作的补丁:",
             choices=choices,
             style=style,
-            instruction=(
-                "(使用方向键选择, "
-                "空格切换多选, "
-                "Enter 确认)"
-            ),
-            # 使用方向键选择, 空格切换多选, Enter 确认
+            instruction="(方向键选择, Enter 确认)",
         ).ask()
     except (KeyboardInterrupt, EOFError):
         answer = None
 
-    if answer is None:
+    if not answer:
         return []
-    return answer
+    return list(answer)
 
 
 def confirm(msg: str) -> bool:

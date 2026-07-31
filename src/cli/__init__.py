@@ -6,7 +6,7 @@ Provides Typer-based command-line interface with:
 - ASCII art banner (charmap)
 """
 
-__version__ = "2.4.4"
+__version__ = "2.4.5"
 
 from cli.app import typer_app
 from cli.charmap import (

@@ -231,6 +231,7 @@ def _apply_named(engine, bundle_dir, cli, name: str, dry_run: bool) -> None:
 def _apply_interactive_select(engine, bundle_dir, cli, dry_run: bool) -> None:
     """Prompt the user to select patches, then apply each selection."""
     registry = _get_registry()
+    config = _get_config()
     from cli.menu import patch_select_menu
 
     patches = registry.get_all()
@@ -239,12 +240,22 @@ def _apply_interactive_select(engine, bundle_dir, cli, dry_run: bool) -> None:
         return
 
     selected = patch_select_menu(patches)
-    for patch_name in selected:
-        result = engine.apply(patch_name, bundle_dir, dry_run=dry_run)
-        if result.success:
-            cli.success(f"{result.patch_name}: {result.message}")
-        else:
-            cli.error(f"{result.patch_name}: {result.message}")
+    if not selected:
+        cli.info("未选择任何补丁")
+        return
+
+    prev_force = config.patch.force_reapply
+    if not dry_run:
+        config.patch.force_reapply = True
+    try:
+        for patch_name in selected:
+            result = engine.apply(patch_name, bundle_dir, dry_run=dry_run)
+            if result.success:
+                cli.success(f"{result.patch_name}: {result.message}")
+            else:
+                cli.error(f"{result.patch_name}: {result.message}")
+    finally:
+        config.patch.force_reapply = prev_force
 
 
 @typer_app.command()

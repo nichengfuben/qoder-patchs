@@ -2,6 +2,11 @@
 
 本文件记录 Patcher（原 AgentCLI Patchs）的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.4.5
+
+- **交互菜单**：应用/回滞补丁改用方向键+Enter 单选（含「全部」），避免 checkbox 未按空格勾选导致“选中不生效”
+- 交互应用时默认强制重打已 APPLIED 的补丁
+
 ## 2.4.4
 
 - **SC 配置目录**：`config.json` / `sc_status.json` / `sc_auto.*` 迁至 `~/.cursor`（与 `cli-config`、`sc_instances` 同目录）；`auth.json` 仍在平台 auth 目录（Windows：`%APPDATA%\Cursor`）

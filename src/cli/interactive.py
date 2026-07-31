@@ -86,6 +86,7 @@ def _interactive_apply(cli) -> None:
 
     registry = app._get_registry()
     engine = app._get_engine()
+    config = app._get_config()
     bundle_dir = app._get_bundle_dir()
 
     patches = registry.get_all()
@@ -107,13 +108,19 @@ def _interactive_apply(cli) -> None:
         # 未找到 Qoder CLI bundle 目录. 请在配置中设置 paths.bundle_dir
         return
 
-    for name in selected:
-        cli.info(f"正在应用补丁: {name}")  # 正在应用补丁: ...
-        result = engine.apply(name, bundle_dir)
-        if result.success:
-            cli.success(f"{name}: {result.message}")
-        else:
-            cli.error(f"{name}: {result.message}")
+    # 菜单里主动选中即视为要重打（否则已 APPLIED 会被引擎直接跳过）
+    prev_force = config.patch.force_reapply
+    config.patch.force_reapply = True
+    try:
+        for name in selected:
+            cli.info(f"正在应用补丁: {name}")  # 正在应用补丁: ...
+            result = engine.apply(name, bundle_dir)
+            if result.success:
+                cli.success(f"{name}: {result.message}")
+            else:
+                cli.error(f"{name}: {result.message}")
+    finally:
+        config.patch.force_reapply = prev_force
 
 
 def _interactive_status(cli) -> None:
@@ -162,6 +169,7 @@ def _interactive_rollback(cli) -> None:
 
     selected = patch_select_menu(patches)
     if not selected:
+        cli.info("未选择任何补丁")
         return
 
     for name in selected:
