@@ -240,6 +240,27 @@ def _pid_path() -> Path:
     return cursor_config_dir() / PID_FILE
 
 
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid)
+        )
+        if handle:
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
 def _read_auto_pid() -> Optional[int]:
     path = _pid_path()
     if not path.exists():
@@ -248,12 +269,10 @@ def _read_auto_pid() -> Optional[int]:
         pid = int(path.read_text(encoding="utf-8").strip())
     except Exception:
         return None
-    try:
-        os.kill(pid, 0)
+    if _pid_alive(pid):
         return pid
-    except OSError:
-        path.unlink(missing_ok=True)
-        return None
+    path.unlink(missing_ok=True)
+    return None
 
 
 def _write_pid() -> None:
@@ -269,7 +288,17 @@ def cmd_auto_stop() -> int:
         print("auto 未在运行")
         return 0
     try:
-        os.kill(pid, signal.SIGTERM)
+        if os.name == "nt":
+            import ctypes
+
+            handle = ctypes.windll.kernel32.OpenProcess(0x0001, False, int(pid))  # PROCESS_TERMINATE
+            if handle:
+                ctypes.windll.kernel32.TerminateProcess(handle, 1)
+                ctypes.windll.kernel32.CloseHandle(handle)
+            else:
+                os.kill(pid, signal.SIGTERM)
+        else:
+            os.kill(pid, signal.SIGTERM)
     except OSError as exc:
         set_action("error", f"停止失败: {exc}", last_error=str(exc))
         print(f"停止失败: {exc}")
