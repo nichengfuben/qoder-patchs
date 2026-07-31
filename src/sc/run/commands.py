@@ -19,7 +19,7 @@ from sc.run.pull import (
     usage_threshold,
 )
 from sc.run.status_store import set_action, status_json_path, write_status
-from sc.run.status_store import format_status_lines, run as statusline_run
+from sc.statusline_fast import format_status_lines, run as statusline_run
 
 
 def cmd_pull() -> int:

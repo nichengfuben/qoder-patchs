@@ -7,7 +7,7 @@ import sys
 from typing import List, Optional
 
 from sc.core.paths import auth_json_path, config_json_path
-from sc.encoding import ensure_utf8_stdio
+from sc.core.encoding import ensure_utf8_stdio
 from sc.run import instances as inst
 from sc.run.auto import cmd_auto, cmd_auto_stop
 from sc.run.commands import (

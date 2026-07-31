@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from sc.encoding import ensure_utf8_stdio, utf8_env
+from sc.core.encoding import ensure_utf8_stdio, utf8_env
 
 
 def test_ensure_utf8_sets_env(monkeypatch) -> None:

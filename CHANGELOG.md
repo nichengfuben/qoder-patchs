@@ -2,6 +2,10 @@
 
 本文件记录 Patcher（原 AgentCLI Patchs）的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.4.3
+
+- achecker：`encoding` 迁入 `sc.core`；`format_status_lines` 迁入 `statusline_fast`，压缩 `status_store` 行数并满足 `src/sc` 子项上限
+
 ## 2.4.2
 
 - **statusLine**：恢复 `sc.statusline_fast` 兼容入口（2.4.0 误删后旧 `sc-statusline.cmd` 会刷新失败导致底栏冻在最后一帧）

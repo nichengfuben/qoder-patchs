@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 """Multi-instance auto loop: leader election + usage polling."""
 
@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from sc.core.paths import cursor_config_dir
-from sc.encoding import utf8_env
+from sc.core.encoding import utf8_env
 from sc.run import instances as inst
 from sc.run.status_store import set_action, write_status
 
