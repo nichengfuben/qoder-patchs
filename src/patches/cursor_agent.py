@@ -43,9 +43,7 @@ _REPLACEMENTS: tuple[tuple[str, str], ...] = (
 
 _BOOT_BLOCK = f"""{BOOT_MARKER}
 REM Start sc auto (detached) before launching agent UI
-if exist "%~dp0sc.cmd" (
-  start "" /B cmd /c "chcp 65001 >nul & set PYTHONUTF8=1 & set PYTHONIOENCODING=utf-8 & call \"%~dp0sc.cmd\" auto"
-)
+if exist "%~dp0sc.cmd" start "" /B "%~dp0sc.cmd" auto
 """
 
 _SC_CMD = r"""@echo off
