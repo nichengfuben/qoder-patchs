@@ -60,12 +60,16 @@ python main.py rollback cursor-agent
 
 逆向 `%LOCALAPPDATA%\cursor-agent\`：
 
-- **Auth 热读**（`index.js`）：去掉缓存短路，外部改写 `%APPDATA%\Cursor\auth.json` 立即生效
+- **Auth 热读 v2**（`index.js`）：
+  - AuthStorage / keychain：去掉 `cachedAccessToken` 短路，每次 `readAuthData` / `getSecret`
+  - 禁用 `auth-refresh` **ephemeral** 与 apiKeyOverride（Bearer 只信盘上 `auth.json`）
+  - 工厂强制 **file** AuthStorage；memory getter 兜底返回空
+  - 禁用 `cursor-agent.ps1` 的 `NODE_COMPILE_CACHE`，避免补丁后仍跑旧字节码
 - **statusLine**：leader auto 实时写 `sc_instances.json`；任意实例只读该 json 刷新用量/`#`；**时间**为当前时刻实时时钟；**模型**为用户所选（stdin）
 - **配置**：从 `X:\Project\Common\Common\config.json`（client.py 同目录）复制到 `%APPDATA%\Cursor\config.json`
 - **statusline**：提示符上一行显示额度 / 换号状态（`AxN` 表示 N 个在线实例）
 
-应用后**重启一次** `ag`。
+应用后**必须完全退出并重启** `ag`（旧进程里的 ephemeral 仍在内存）。换号后用 `sc status` 看 `token … sub=` 是否已变。
 
 ### 配置与状态
 

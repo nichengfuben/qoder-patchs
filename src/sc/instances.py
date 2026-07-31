@@ -19,6 +19,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+
 INSTANCES_FILE = "sc_instances.json"
 LOCK_FILE = "sc_instances.lock"
 STALE_SEC = 10.0
@@ -159,9 +160,18 @@ def _write_unlocked(data: Dict[str, Any]) -> None:
     path = instances_json_path()
     data["updated_at"] = time.time()
     data["updated_iso"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    # 文件锁内仍用唯一 tmp，避免残留 .tmp 与偶发跨进程冲突
+    tmp = path.with_name(f"sc_instances.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(str(tmp), str(path))
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+        path.write_text(text, encoding="utf-8")
 
 
 def _fresh_entries(

@@ -91,3 +91,21 @@ def access_token() -> Optional[str]:
     if not auth:
         return None
     return auth.get("accessToken") or auth.get("access_token")
+
+
+def token_subject(token: Optional[str] = None) -> Optional[str]:
+    """解析 JWT ``sub``（不校验签名；仅用于 status 对照当前号）。"""
+    import base64
+    import json as _json
+
+    raw = token if token is not None else access_token()
+    if not raw or raw.count(".") < 2:
+        return None
+    try:
+        payload = raw.split(".")[1]
+        pad = "=" * ((4 - len(payload) % 4) % 4)
+        body = _json.loads(base64.urlsafe_b64decode(payload + pad))
+        sub = body.get("sub")
+        return str(sub) if sub else None
+    except Exception:
+        return None

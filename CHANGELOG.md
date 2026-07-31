@@ -2,6 +2,13 @@
 
 本文件记录 AgentCLI Patchs 的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.3.0
+
+- **hot-auth v2**：掐断 `auth-refresh` ephemeral / apiKeyOverride；Zn 不再回落内存 token；memory store getter 兜底为空；keychain `getAllCredentials` 去短路
+- 禁用 `cursor-agent.ps1` 的 `NODE_COMPILE_CACHE`，apply 时清理 `%LOCALAPPDATA%\cursor-compile-cache`
+- 补丁自测：原串 → `apply_hot_auth_replacements` 断言；`index.js` 写入前 `node --check`
+- `sc status` 输出当前 `auth.json` JWT `sub`，便于对照换号是否生效
+
 ## 2.2.1
 
 - 多 AgentCLI 实例：`~/.cursor/sc_instances.json`（uuidv7 + 心跳）；>10s 未心跳自动下线

@@ -14,6 +14,7 @@ from typing import List, Optional
 from sc.encoding import ensure_utf8_stdio, utf8_env
 from sc import api, auth, instances as inst
 from sc.config import load_config, save_config
+from sc.keys import KeyPool, KeyState
 from sc.paths import auth_json_path, config_json_path, cursor_config_dir
 from sc.status_store import (
     format_status_lines,
@@ -108,38 +109,127 @@ def _snapshot_usage(usage: dict) -> None:
     )
 
 
-def _switch_threshold(cfg: dict) -> float:
-    """优先 ``switch_threshold``（对齐 client），否则 ``usage_threshold``。"""
-    if cfg.get("switch_threshold") is not None:
-        return float(cfg.get("switch_threshold"))
-    return float(cfg.get("usage_threshold") or 95.0)
+def _usage_threshold(cfg: dict) -> float:
+    """对齐 client.py ``/auto``：只用 ``usage_threshold``（默认 95）。
+
+    ``switch_threshold`` 仅用于 Key 日用量轮换（见 ``KeyPool``），不参与 Cursor 换号。
+    """
+    if cfg.get("usage_threshold") is not None:
+        return float(cfg.get("usage_threshold"))
+    return 95.0
 
 
-def cmd_pull() -> int:
-    cfg = load_config()
-    keys = list(cfg.get("api_keys") or [])
-    if not keys:
-        set_action("error", "无 API Key", last_error="missing api key")
-        print("无 API Key。请先: sc addkey <sc_xxx> 或编辑", config_json_path())
-        return 1
-    threshold = _switch_threshold(cfg)
-    retries = int(cfg.get("max_retry_per_pull") or 3)
+def _make_pool(cfg: dict) -> KeyPool:
+    keys = [str(k) for k in (cfg.get("api_keys") or []) if k]
+    return KeyPool(
+        keys=keys,
+        threshold=int(cfg.get("switch_threshold") or 80),
+        refresh_interval=int(cfg.get("status_refresh_interval") or 60),
+    )
+
+
+def _refresh_key_state(pool: KeyPool, s: KeyState, cfg: dict) -> bool:
+    try:
+        data = api.key_status(
+            str(cfg.get("base_url") or ""),
+            s.key,
+            timeout=float(cfg.get("request_timeout") or 20),
+        )
+        s.name = str(data.get("name") or s.name)
+        s.is_active = bool(data.get("is_active", s.is_active))
+        s.daily_used = data.get("daily_used")
+        s.daily_limit = data.get("daily_limit")
+        s.rpm = data.get("rate_limit_per_minute")
+        s.total_used = data.get("total_used")
+        s.last_checked = time.time()
+        s.errors = 0
+        return True
+    except Exception as exc:
+        print(f"刷新 Key[{s.masked()}] 失败: {api.short_error(exc)}")
+        s.errors += 1
+        return False
+
+
+def _ensure_usable_key(pool: KeyPool, cfg: dict) -> Optional[KeyState]:
+    total = len(pool.all())
+    if total == 0:
+        return None
+    for _ in range(total):
+        s = pool.current
+        if s is None:
+            return None
+        if pool.is_stale(s):
+            _refresh_key_state(pool, s, cfg)
+        if pool.should_switch(s):
+            print(
+                f"Key[{s.masked()}] daily_used={s.daily_used} "
+                f">= 阈值 {pool.threshold}，切换..."
+            )
+            pool.switch_next()
+            continue
+        return s
+    return None
+
+
+def _acquire_token(pool: KeyPool, cfg: dict) -> Optional[dict]:
+    """对齐 client.py ``_acquire_token``：Key 轮换 + HTTP 错误处理。"""
+    max_retry = int(cfg.get("max_retry_per_pull") or 3)
     timeout = float(cfg.get("request_timeout") or 20)
     base = str(cfg.get("base_url") or "")
-    _snapshot_account()
-    for attempt in range(1, retries + 1):
-        key = keys[(attempt - 1) % len(keys)]
+    for attempt in range(1, max_retry + 1):
+        s = _ensure_usable_key(pool, cfg)
+        if s is None:
+            print("所有 Key 均已达阈值或不可用")
+            return None
         set_action(
             "pulling",
-            f"pull [{attempt}/{retries}] via {_mask(key)}",
+            f"pull [{attempt}/{max_retry}] via {s.masked()}",
             last_error="",
         )
-        print(f"[{attempt}/{retries}] pull via {_mask(key)} ...")
+        print(f"[{attempt}/{max_retry}] pull via {s.masked()} ...")
         try:
-            data = api.pull_token(base, key, timeout=timeout)
+            result = api.pull_token(base, s.key, timeout=timeout)
+            if s.daily_used is not None:
+                try:
+                    s.daily_used = int(s.daily_used) + 1
+                except Exception:
+                    pass
+            print(f"Token 获取成功，卡密: {result.get('card_number', '?')}")
+            return result
+        except api.ApiError as e:
+            if e.status == 403:
+                payload = e.payload
+                if payload.get("error") == "Daily limit reached":
+                    s.daily_used = payload.get("daily_used", s.daily_used)
+                    s.daily_limit = payload.get("daily_limit", s.daily_limit)
+                    s.last_checked = time.time()
+                    print(
+                        f"Key[{s.masked()}] 每日上限 "
+                        f"({s.daily_used}/{s.daily_limit})，切换"
+                    )
+                else:
+                    s.is_active = False
+                    print(f"Key[{s.masked()}] 已被禁用")
+                pool.switch_next()
+            elif e.status == 429:
+                wait = float(e.payload.get("retry_after") or 5)
+                print(f"速率限制，等待 {wait}s")
+                time.sleep(wait)
+            elif e.status == 503:
+                print("账号池无可用卡密，3s 后重试")
+                time.sleep(3)
+            elif e.status == 500:
+                print("卡密尝试全部失败，切换 Key")
+                pool.switch_next()
+            elif e.status == 401:
+                s.is_active = False
+                print(f"Key[{s.masked()}] 无效，剔除并切换")
+                pool.switch_next()
+            else:
+                print(f"未知错误 HTTP {e.status}")
+                time.sleep(2)
         except Exception as exc:
             hint = api.short_error(exc)
-            # 瞬时网络/SSL：不刷 ERR 到 statusbar，静默重试
             if api.is_transient_net_error(exc) or hint in (
                 "SSL断连",
                 "SSL失败",
@@ -148,38 +238,124 @@ def cmd_pull() -> int:
                 "连接重置",
                 "DNS失败",
             ):
-                print(f"pull 暂不可用: {hint}")
+                print(f"pull 暂不可用: {hint}，2s 后重试")
             else:
-                # HTTP 404 等：保留 PULL 态短提示，最终 retries 再定论
                 print(f"pull 失败: {hint}")
-            continue
-        access, refresh, email, card = api.extract_tokens(data)
-        if not access:
-            print("响应无 access_token")
-            continue
-        if not auth.write_auth(access, refresh):
-            set_action("error", "写入 auth.json 失败", last_error="write auth failed")
-            print("写入 auth.json 失败:", auth_json_path())
-            return 1
-        _snapshot_account(access, email=email, card=card)
-        write_status(last_pull_at=time.strftime("%Y-%m-%d %H:%M:%S"), last_error="")
-        print(f"已写入 {auth_json_path()} email={email or '-'} card={card or '-'}")
-        print("(已打 cursor-agent 热更新补丁时无需重启)")
+            time.sleep(2)
+    print(f"已重试 {max_retry} 次，未能获取 Token")
+    return None
+
+
+def _do_pull_and_write(pool: KeyPool, cfg: dict) -> bool:
+    """对齐 client.py ``_do_pull_and_write``：拉一次并写 auth.json。"""
+    if pool.is_empty():
+        set_action("error", "无 API Key", last_error="missing api key")
+        print("无 API Key。请先: sc addkey <sc_xxx> 或编辑", config_json_path())
+        return False
+    result = _acquire_token(pool, cfg)
+    if not result:
+        return False
+    access, refresh, email, card = api.extract_tokens(result)
+    if not access:
+        print("pull-token 返回里没有 access_token")
+        return False
+    if not auth.write_auth(access, refresh):
+        set_action("error", "写入 auth.json 失败", last_error="write auth failed")
+        print("写入 auth.json 失败:", auth_json_path())
+        return False
+    _snapshot_account(access, email=email, card=card)
+    write_status(last_pull_at=time.strftime("%Y-%m-%d %H:%M:%S"), last_error="")
+    print(f"已写入 {auth_json_path()} email={email or '-'} card={card or '-'}")
+    print(f"uid={api.extract_user_id(access) or '-'}")
+    print("(已打 cursor-agent 热更新补丁时无需重启)")
+    return True
+
+
+def _pull_until_acceptable_usage(
+    pool: KeyPool,
+    cfg: dict,
+    threshold: float,
+    *,
+    max_attempts: Optional[int] = None,
+    title_prefix: str = "新号用量",
+) -> bool:
+    """对齐 client.py：拉号后立刻查用量；仍超阈值则马上再拉。"""
+    attempts = (
+        max_attempts
+        if max_attempts is not None
+        else int(cfg.get("max_retry_per_pull") or 3)
+    )
+    timeout = float(cfg.get("request_timeout") or 20)
+    for attempt in range(1, attempts + 1):
+        if not _do_pull_and_write(pool, cfg):
+            print(
+                f"换号失败 ({attempt}/{attempts})"
+                if attempt > 1
+                else "自动换号失败"
+            )
+            return False
+        at = auth.access_token()
+        if not at:
+            print("换号后无法读取本地 Token")
+            return False
         try:
-            usage = api.parse_usage(api.fetch_usage(access, timeout=timeout))
+            print(f"校验用量 [{attempt}/{attempts}]...")
+            usage = api.parse_usage(api.fetch_usage(at, timeout=timeout))
+            _snapshot_account(at)
             _snapshot_usage(usage)
-            print(f"用量 total={usage['total_pct']}%")
+            print(
+                f"{title_prefix} #{attempt}/{attempts} "
+                f"total={usage['total_pct']:.1f}% "
+                f"auto={usage['auto_pct']:.1f}% api={usage['api_pct']:.1f}%"
+            )
             if not api.is_limit_reached(usage, threshold):
-                set_action("ok", f"pull 成功 total={usage['total_pct']}%")
-                return 0
-            set_action("switching", f"超阈值 (>={threshold}%)，继续拉号")
-            print(f"超阈值 (>={threshold}%)，继续拉号...")
-        except Exception:
-            # 用量失败不改 statusbar：token 已写入，等下次成功再渲染
-            set_action("ok", "pull 成功")
-            return 0
-    set_action("error", "pull 重试耗尽", last_error="retries exhausted")
-    return 1
+                set_action(
+                    "ok",
+                    f"换号成功 total={usage['total_pct']:.1f}% < {threshold}%",
+                )
+                print(
+                    f"换号成功，额度正常 "
+                    f"({usage['total_pct']:.1f}% < {threshold}%)"
+                )
+                return True
+            if attempt < attempts:
+                set_action(
+                    "switching",
+                    f"新号仍超阈值 (>={threshold}%)，继续拉号",
+                )
+                print(
+                    f"新号仍超阈值 ({usage['total_pct']:.1f}% >= {threshold}%)，"
+                    f"立即再次换号..."
+                )
+            else:
+                set_action(
+                    "error",
+                    f"连续换号 {attempts} 次仍超阈值",
+                    last_error="still over threshold",
+                )
+                print(
+                    f"已连续换号 {attempts} 次仍超阈值 "
+                    f"({usage['total_pct']:.1f}% >= {threshold}%)"
+                )
+        except Exception as exc:
+            hint = api.short_error(exc)
+            print(f"校验新号用量失败: {hint}")
+            # 对齐 client：校验失败视为本轮失败（token 已写入，下轮 auto 再查）
+            set_action("ok", f"pull 已写入，用量校验失败: {hint}")
+            return False
+    return False
+
+
+def cmd_pull() -> int:
+    """对齐 client.py ``/pull``：拉号直到用量低于 ``usage_threshold``。"""
+    cfg = load_config()
+    pool = _make_pool(cfg)
+    threshold = _usage_threshold(cfg)
+    _snapshot_account()
+    ok = _pull_until_acceptable_usage(
+        pool, cfg, threshold, title_prefix="拉号后用量"
+    )
+    return 0 if ok else 1
 
 
 def cmd_usage() -> int:
@@ -275,10 +451,15 @@ def cmd_status() -> int:
     print(f"auth:   {auth_json_path()}")
     print(f"status: {status_json_path()}")
     print(f"instances: {inst.instances_json_path()}")
+    sub = auth.token_subject(token)
+    if token:
+        print(f"token:  present len={len(token)} sub={sub or '?'}")
+    else:
+        print("token:  missing")
     print(f"keys:   {len(keys)}")
     for k in keys:
         print(f"  - {_mask(k)}")
-    print(f"poll={cfg.get('poll_interval')}s threshold={_switch_threshold(cfg)}%")
+    print(f"poll={cfg.get('poll_interval')}s threshold={_usage_threshold(cfg)}%")
     print(f"online: {n_online}  leader={leader or '-'}")
     for iid, info in (doc.get("instances") or {}).items():
         if not isinstance(info, dict):
@@ -468,53 +649,94 @@ def _leader_tick(
     n: int,
     interval: int,
     threshold: float,
+    pool: KeyPool,
+    cfg: dict,
 ) -> None:
-    """仅 leader 执行：查用量 / 必要时换号；中途丢 leader 立即停。"""
+    """对齐 client.py ``_cmd_auto`` 单轮：查用量 / 超阈值则 pull_until_acceptable。
+
+    多实例约束：中途丢 leader 立即停。
+    """
     if not _still_leader(instance_id):
         print(f"#{n} 已非 leader，跳过 auto tick")
         return
+
     token = auth.access_token()
     if not token:
         if not _still_leader(instance_id):
             return
-        set_action("switching", f"#{n} 无 Token，自动 pull…")
-        print(f"#{n} 无 Token，自动 pull...")
-        if _still_leader(instance_id):
-            cmd_pull()
-        return
+        set_action("switching", f"#{n} 无 Token，自动拉号…")
+        print(f"#{n} 无 Token，自动拉号...")
+        if not _still_leader(instance_id):
+            return
+        ok = _do_pull_and_write(pool, cfg)
+        if not ok:
+            print(f"#{n} 拉号失败，{interval}s 后重试")
+            set_action("error", f"#{n} 拉号失败", last_error="pull failed")
+            return
+        token = auth.access_token()
+        if not token:
+            return
+
     try:
         if not _still_leader(instance_id):
-            print(f"#{n} 拉取前失去 leader，立即停")
+            print(f"#{n} 查询前失去 leader，立即停")
             return
-        usage = api.parse_usage(api.fetch_usage(token))
+        print(f"#{n} 查询用量...")
+        usage = api.parse_usage(
+            api.fetch_usage(token, timeout=float(cfg.get("request_timeout") or 20))
+        )
         if not _still_leader(instance_id):
-            print(f"#{n} 拉取后失去 leader，丢弃结果并立即停")
+            print(f"#{n} 查询后失去 leader，丢弃结果并立即停")
             return
         _snapshot_account(token)
         _snapshot_usage(usage)
         write_status(poll_n=n, last_error="")
-        print(f"#{n} total={usage['total_pct']}%")
+        print(
+            f"#{n} total={usage['total_pct']:.1f}% "
+            f"auto={usage['auto_pct']:.1f}% api={usage['api_pct']:.1f}% "
+            f"status={usage.get('status')}"
+        )
         if api.is_limit_reached(usage, threshold):
             if not _still_leader(instance_id):
                 print(f"#{n} 换号前失去 leader，立即停")
                 return
             set_action(
                 "switching",
-                f"#{n} 超阈值 total={usage['total_pct']}%，自动换号…",
+                f"#{n} 超阈值 total={usage['total_pct']:.1f}% >= {threshold}%",
             )
-            print("超阈值，自动换号...")
-            cmd_pull()
+            print(
+                f"达到阈值 (total={usage['total_pct']:.1f}% >= {threshold}%)，"
+                f"自动换号..."
+            )
+            if not _pull_until_acceptable_usage(
+                pool, cfg, threshold, title_prefix=f"监测#{n}换号"
+            ):
+                print(f"#{n} 自动换号未获得可用额度，下轮重试")
+                set_action(
+                    "error",
+                    f"#{n} 换号未获可用额度",
+                    last_error="switch failed",
+                )
         else:
             set_action(
                 "polling",
-                f"#{n} total={usage['total_pct']}% 下轮 {interval}s",
+                f"#{n} total={usage['total_pct']:.1f}% < {threshold}% 下轮 {interval}s",
             )
-    except Exception:
-        pass
+            print(f"额度正常 ({usage['total_pct']:.1f}% < {threshold}%)")
+    except Exception as exc:
+        hint = api.short_error(exc)
+        print(f"#{n} 查询用量失败: {hint}")
+        # 瞬时网络不刷 ERR；其它错误短提示，保留上次用量快照
+        if not (
+            api.is_transient_net_error(exc)
+            or hint
+            in ("SSL断连", "SSL失败", "超时", "网络错误", "连接重置", "DNS失败")
+        ):
+            set_action("polling", f"#{n} 用量查询失败: {hint}", last_error=hint)
 
 
 def cmd_auto(*, foreground: bool = False, parent_pid: Optional[int] = None) -> int:
-    """多实例保活：最晚上线者为 leader；**仅 leader 跑 auto**；丢 leader 立即停 auto。"""
+    """多实例保活：最晚上线者为 leader；**仅 leader 跑 auto**（对齐 client ``/auto``）。"""
     if not foreground and os.name == "nt":
         import subprocess
 
@@ -543,7 +765,8 @@ def cmd_auto(*, foreground: bool = False, parent_pid: Optional[int] = None) -> i
     _kill_legacy_exclusive_auto()
     cfg = load_config()
     interval = max(1, int(cfg.get("poll_interval") or 5))
-    threshold = _switch_threshold(cfg)
+    threshold = _usage_threshold(cfg)
+    pool = _make_pool(cfg)
     iid = inst.register_instance(parent_pid=parent_pid)
     _write_pid()
     _snapshot_account()
@@ -555,93 +778,133 @@ def cmd_auto(*, foreground: bool = False, parent_pid: Optional[int] = None) -> i
     )
     print(
         f"instance={iid} parent={parent_pid or '-'} "
-        f"interval={interval}s thr={threshold}% file={inst.instances_json_path()}"
+        f"interval={interval}s thr={threshold}% "
+        f"(usage_threshold) keys={len(pool.all())} "
+        f"file={inst.instances_json_path()}"
+    )
+    print(
+        f"自动监测启动 | 间隔 {interval}s | 换号阈值 total>={threshold}% "
+        f"| Ctrl+C / sc auto stop 停止"
     )
     last_poll = 0.0
     poll_n = 0
     was_leader = False
     try:
         while True:
-            if parent_pid and not _pid_alive(parent_pid):
-                print("parent 已退出，实例下线")
-                break
-            doc = inst.heartbeat(iid, parent_pid=parent_pid)
-            if iid not in (doc.get("instances") or {}):
-                print("实例已被清理（parent 退出或冲突），结束")
-                break
-
-            leader_now = inst.is_leader(iid, doc)
-            # 仅 leader：扫全部时间戳清理 + 跑 auto
-            if leader_now:
-                doc = inst.leader_prune_stale(iid)
-                leader_now = inst.is_leader(iid, doc)
-            else:
-                # 非 leader：leader 心跳 >=10s → 清掉该实例和 Leader
-                prev_leader = doc.get("leader_id")
-                doc = inst.follower_clear_stale_leader(iid)
-                if prev_leader and doc.get("leader_id") != prev_leader:
-                    print(
-                        f"follower 清过期 leader={prev_leader} "
-                        f"→ new={doc.get('leader_id') or '-'}"
+            try:
+                if parent_pid and not _pid_alive(parent_pid):
+                    print("parent 已退出，实例下线")
+                    break
+                # 每轮热读配置阈值/间隔（对齐 client 可改配置后继续跑）
+                cfg = load_config()
+                interval = max(1, int(cfg.get("poll_interval") or interval))
+                threshold = _usage_threshold(cfg)
+                # Key 列表变化时重建池，保留日用量状态较难；简单重建
+                new_keys = [str(k) for k in (cfg.get("api_keys") or []) if k]
+                if new_keys != pool.to_key_list():
+                    pool = _make_pool(cfg)
+                else:
+                    pool.threshold = int(cfg.get("switch_threshold") or pool.threshold)
+                    pool.refresh_interval = int(
+                        cfg.get("status_refresh_interval") or pool.refresh_interval
                     )
+
+                doc = inst.heartbeat(iid, parent_pid=parent_pid)
+                if iid not in (doc.get("instances") or {}):
+                    print("实例已被清理（parent 退出或冲突），结束")
+                    break
+
                 leader_now = inst.is_leader(iid, doc)
+                # 仅 leader：扫全部时间戳清理 + 跑 auto
+                if leader_now:
+                    doc = inst.leader_prune_stale(iid)
+                    leader_now = inst.is_leader(iid, doc)
+                else:
+                    # 非 leader：leader 心跳 >=10s → 清掉该实例和 Leader
+                    prev_leader = doc.get("leader_id")
+                    doc = inst.follower_clear_stale_leader(iid)
+                    if prev_leader and doc.get("leader_id") != prev_leader:
+                        print(
+                            f"follower 清过期 leader={prev_leader} "
+                            f"→ new={doc.get('leader_id') or '-'}"
+                        )
+                    leader_now = inst.is_leader(iid, doc)
 
-            n_online = inst.online_count(doc)
+                n_online = inst.online_count(doc)
 
-            if leader_now:
-                if not was_leader:
-                    set_action("polling", f"成为 leader，开始 auto x{n_online}")
-                    print(f"leader acquired → 开始 auto online={n_online}")
-                    was_leader = True
-                    last_poll = 0.0  # 立刻跑一轮
-                write_status(
-                    instance_count=n_online,
-                    leader_id=doc.get("leader_id"),
-                    auto_running=True,
-                    auto_pid=os.getpid(),
-                    instance_id=iid,
-                )
-                now = time.time()
-                if now - last_poll >= interval:
-                    # 开跑前再确认一次，防止刚被更晚上线者顶掉
-                    if not _still_leader(iid):
-                        print("leader 变更，立即停止 auto")
-                        was_leader = False
-                        write_status(auto_running=False, auto_pid=None)
-                        set_action("ok", f"follower 监听 x{n_online}")
-                    else:
-                        poll_n += 1
-                        last_poll = now
-                        _leader_tick(iid, poll_n, interval, threshold)
+                if leader_now:
+                    if not was_leader:
+                        set_action("polling", f"成为 leader，开始 auto x{n_online}")
+                        print(f"leader acquired → 开始 auto online={n_online}")
+                        was_leader = True
+                        last_poll = 0.0  # 立刻跑一轮
+                    write_status(
+                        instance_count=n_online,
+                        leader_id=doc.get("leader_id"),
+                        auto_running=True,
+                        auto_pid=os.getpid(),
+                        instance_id=iid,
+                        poll_interval=interval,
+                        usage_threshold=threshold,
+                    )
+                    now = time.time()
+                    if now - last_poll >= interval:
+                        # 开跑前再确认一次，防止刚被更晚上线者顶掉
                         if not _still_leader(iid):
-                            print("leader 变更，auto tick 后立即停止")
+                            print("leader 变更，立即停止 auto")
                             was_leader = False
                             write_status(auto_running=False, auto_pid=None)
-                            set_action("ok", f"follower 监听 x{inst.online_count()}")
-            else:
-                if was_leader:
-                    # 丢 leader：立即停 auto（不再 poll / pull）
-                    print("leader 变更，立即停止 auto → follower")
-                    was_leader = False
-                    last_poll = 0.0
-                    write_status(
-                        instance_count=n_online,
-                        leader_id=doc.get("leader_id"),
-                        auto_running=False,
-                        auto_pid=None,
-                        instance_id=iid,
-                    )
-                    set_action("ok", f"follower 监听 x{n_online}")
+                            set_action("ok", f"follower 监听 x{n_online}")
+                        else:
+                            poll_n += 1
+                            last_poll = now
+                            try:
+                                _leader_tick(
+                                    iid, poll_n, interval, threshold, pool, cfg
+                                )
+                            except Exception as tick_exc:
+                                print(
+                                    f"#{poll_n} leader tick 异常: "
+                                    f"{type(tick_exc).__name__}: {tick_exc}"
+                                )
+                            if not _still_leader(iid):
+                                print("leader 变更，auto tick 后立即停止")
+                                was_leader = False
+                                write_status(auto_running=False, auto_pid=None)
+                                set_action(
+                                    "ok", f"follower 监听 x{inst.online_count()}"
+                                )
                 else:
-                    write_status(
-                        instance_count=n_online,
-                        leader_id=doc.get("leader_id"),
-                        auto_running=False,
-                        auto_pid=None,
-                        instance_id=iid,
-                    )
-                    _apply_shared_usage(doc)
-                    set_action("ok", f"follower 监听 x{n_online}")
+                    if was_leader:
+                        # 丢 leader：立即停 auto（不再 poll / pull）
+                        print("leader 变更，立即停止 auto → follower")
+                        was_leader = False
+                        last_poll = 0.0
+                        write_status(
+                            instance_count=n_online,
+                            leader_id=doc.get("leader_id"),
+                            auto_running=False,
+                            auto_pid=None,
+                            instance_id=iid,
+                        )
+                        set_action("ok", f"follower 监听 x{n_online}")
+                    else:
+                        write_status(
+                            instance_count=n_online,
+                            leader_id=doc.get("leader_id"),
+                            auto_running=False,
+                            auto_pid=None,
+                            instance_id=iid,
+                        )
+                        _apply_shared_usage(doc)
+                        set_action("ok", f"follower 监听 x{n_online}")
+            except Exception as loop_exc:
+                # 单轮失败不得退出守护：否则 statusLine 长期 STALE
+                print(
+                    f"auto loop 异常（继续）: "
+                    f"{type(loop_exc).__name__}: {loop_exc}"
+                )
+                time.sleep(1.0)
             time.sleep(inst.HEARTBEAT_SEC)
     except KeyboardInterrupt:
         print("auto 已停止")
@@ -650,17 +913,23 @@ def cmd_auto(*, foreground: bool = False, parent_pid: Optional[int] = None) -> i
             inst.unregister(iid)
         except Exception:
             pass
-        if _read_auto_pid() == os.getpid():
-            _pid_path().unlink(missing_ok=True)
-        doc = inst.read_instances()
-        write_status(
-            auto_running=bool(doc.get("leader_id")),
-            auto_pid=None,
-            instance_count=inst.online_count(doc),
-            leader_id=doc.get("leader_id"),
-        )
-        if not doc.get("leader_id"):
-            set_action("idle", "auto 已停止")
+        try:
+            if _read_auto_pid() == os.getpid():
+                _pid_path().unlink(missing_ok=True)
+        except Exception:
+            pass
+        try:
+            doc = inst.read_instances()
+            write_status(
+                auto_running=bool(doc.get("leader_id")),
+                auto_pid=None,
+                instance_count=inst.online_count(doc),
+                leader_id=doc.get("leader_id"),
+            )
+            if not doc.get("leader_id"):
+                set_action("idle", "auto 已停止")
+        except Exception:
+            pass
     return 0
 
 

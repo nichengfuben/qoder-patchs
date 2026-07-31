@@ -11,7 +11,9 @@ from sc.paths import config_json_path, cursor_config_dir
 DEFAULT_CONFIG: Dict[str, Any] = {
     "base_url": "http://starcursor.airoe.cn",
     "api_keys": [],
+    # Key 日用量轮换阈值（client KeyPool.switch_threshold）
     "switch_threshold": 80,
+    # Cursor 账号换号阈值（client /auto 只用这个）
     "usage_threshold": 95.0,
     "poll_interval": 5,
     "status_refresh_interval": 5,

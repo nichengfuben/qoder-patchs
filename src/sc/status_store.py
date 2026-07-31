@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import uuid
 from typing import Any, Dict, Optional
 
 from sc.paths import cursor_config_dir
@@ -27,6 +28,40 @@ def read_status() -> Dict[str, Any]:
         return {}
 
 
+def _atomic_write_json(path, data: Dict[str, Any]) -> None:
+    """唯一 tmp + 重试，避免多进程抢 ``sc_status.tmp`` 把 auto 打死（WinError 5）。"""
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    last_exc: Optional[BaseException] = None
+    for attempt in range(1, 8):
+        tmp = path.with_name(f"sc_status.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
+        try:
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(str(tmp), str(path))
+            return
+        except Exception as exc:
+            last_exc = exc
+            try:
+                tmp.unlink(missing_ok=True)
+            except Exception:
+                pass
+            time.sleep(0.05 * attempt)
+            try:
+                path.write_text(text, encoding="utf-8")
+                return
+            except Exception as exc2:
+                last_exc = exc2
+                time.sleep(0.05 * attempt)
+    # 绝不抛出：status 写失败不应杀死 sc auto / statusline
+    try:
+        print(
+            f"write_status 失败 path={path} "
+            f"err={type(last_exc).__name__ if last_exc else '?'}: {last_exc}",
+            flush=True,
+        )
+    except Exception:
+        pass
+
+
 def write_status(**fields: Any) -> None:
     """合并写入状态。
 
@@ -41,21 +76,24 @@ def write_status(**fields: Any) -> None:
         "card",
         "email",
     }
-    cursor_config_dir().mkdir(parents=True, exist_ok=True)
-    cur = read_status()
-    for k, v in fields.items():
-        if v is None:
-            if k in clearable:
-                cur.pop(k, None)
-            continue
-        cur[k] = v
-    cur["updated_at"] = time.time()
-    cur["updated_iso"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    cur["pid"] = os.getpid()
-    path = status_json_path()
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    try:
+        cursor_config_dir().mkdir(parents=True, exist_ok=True)
+        cur = read_status()
+        for k, v in fields.items():
+            if v is None:
+                if k in clearable:
+                    cur.pop(k, None)
+                continue
+            cur[k] = v
+        cur["updated_at"] = time.time()
+        cur["updated_iso"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        cur["pid"] = os.getpid()
+        _atomic_write_json(status_json_path(), cur)
+    except Exception as exc:
+        try:
+            print(f"write_status 异常: {type(exc).__name__}: {exc}", flush=True)
+        except Exception:
+            pass
 
 
 def set_action(action: str, message: str = "", **extra: Any) -> None:
@@ -98,6 +136,9 @@ def _plan_badge(d: Dict[str, Any]) -> tuple[str, str]:
     red = "\033[31m"
     green = "\033[32m"
     cyan = "\033[36m"
+    # auto 停了或用量太旧：先标 STALE，避免和 client 实时 /usage 对不上却仍显示 OK
+    if d.get("_stale"):
+        return "STALE", yellow
     st = str(d.get("plan_status") or "")
     if not st:
         try:
@@ -130,21 +171,23 @@ def format_status_lines(
     *,
     model: str = "",
     width: int = 0,
+    cwd: str = "",
+    mode: str = "",
+    context_pct: Any = None,
 ) -> list[str]:
-    """紧凑一行：``SC OK [████…] 66.0% #126 19:04:22 Auto``。
+    """仅 SC 一行：``SC OK [████…] 66.0% #126 HH:MM:SS``。
 
-    - 用量 / # 来自 json（leader auto 写入）
-    - 时间始终为**当前时刻**实时时钟
-    - 模型为调用方传入（用户所选）
+    路径 / 模型 / Run Everything 由原生 prompt-footer 负责（footer-keep）。
+    ``cwd``/``mode``/``context_pct`` 保留兼容，忽略。
     """
     d = data if data is not None else read_status()
     dim = "\033[90m"
     cyan = "\033[36m"
-    green = "\033[32m"
     yellow = "\033[33m"
     red = "\033[31m"
     bold = "\033[1m"
     reset = "\033[0m"
+    _ = (cwd, mode, context_pct)
 
     action = str(d.get("action") or "idle")
     total = d.get("total_pct")
@@ -159,10 +202,8 @@ def format_status_lines(
     bar = _bar(total)
     usage = f"{bar} {_pct(total)}"
     tick = f"#{tick_n}" if tick_n is not None else ""
-    # 实时时钟（不读 json 里的 usage_at）
     clock = time.strftime("%H:%M:%S")
 
-    # ── 换号 / 拉号：无量条、无账号 ───────────────────────────────────
     if action in ("pulling", "switching"):
         label = "SWITCH" if action == "switching" else "PULL"
         line = f"{cyan}SC{reset} {bold}{yellow}{label}{reset}"
@@ -175,7 +216,6 @@ def format_status_lines(
             short = msg if len(msg) <= 28 else msg[:27] + "…"
             line += f" {yellow}{short}{reset}"
         lines = [line]
-    # ── 硬错误（非 SSL/网络）：ERR + 短因 ─────────────────────────────
     elif action == "error":
         err_s = err or msg or "error"
         low = err_s.lower()
@@ -201,7 +241,6 @@ def format_status_lines(
                 line += f" {tick}"
             line += f" {dim}{clock}{reset}"
             lines = [line]
-    # ── 常态：SC OK [bar] pct #n HH:MM:SS Model ───────────────────────
     else:
         line = f"{cyan}SC{reset} {badge_color}{badge}{reset} {usage}"
         if tick:

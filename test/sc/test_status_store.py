@@ -29,14 +29,37 @@ def test_idle_is_single_compact_line() -> None:
         },
         model="Auto",
     )
+    # 无 cwd/mode 时只有 SC 行；有原生字段时两行
     assert len(lines) == 1
     plain = _strip(lines[0])
     assert plain.startswith("SC")
     assert "OK" in plain
     assert "66.0%" in plain
     assert "#126" in plain
-    assert "Auto" in plain
     assert re.search(r"\d{2}:\d{2}:\d{2}", plain)
+
+
+def test_sc_only_ignores_fake_native_fields() -> None:
+    """cwd/mode/ctx 由原生 footer-keep 渲染；statusLine 命令只输出 SC 一行。"""
+    lines = format_status_lines(
+        {
+            "action": "ok",
+            "total_pct": 19.0,
+            "plan_status": "OK",
+            "usage_seq": 3,
+        },
+        model="",
+        cwd=r"C:\Users\me\Project\demo",
+        mode="Run Everything",
+        context_pct=39.0,
+    )
+    assert len(lines) == 1
+    sc = _strip(lines[0])
+    assert sc.startswith("SC")
+    assert "19.0%" in sc
+    assert "#3" in sc
+    assert "Run Everything" not in sc
+    assert "ctx 39%" not in sc
 
 
 def test_switching_highlights_event() -> None:
@@ -67,12 +90,11 @@ def test_clock_is_live_not_from_json() -> None:
         },
         model="Auto",
     )
-    plain = _strip(lines[0])
+    plain = _strip(lines[-1])
     assert "00:00:00" not in plain or plain.count(":") >= 2
     # 不应强制显示 json 里的假时间作为唯一时钟——有当前时钟
     assert re.search(r"\d{2}:\d{2}:\d{2}", plain)
     assert "#7" in plain
-    assert "Auto" in plain
 
 
 def test_usage_seq_forces_visible_refresh() -> None:
@@ -82,6 +104,23 @@ def test_usage_seq_forces_visible_refresh() -> None:
         "total_pct": 40.0,
         "plan_status": "OK",
     }
-    a = _strip(format_status_lines({**base, "usage_seq": 7}, model="Auto")[0])
-    b = _strip(format_status_lines({**base, "usage_seq": 8}, model="Auto")[0])
+    a = _strip(format_status_lines({**base, "usage_seq": 7}, model="Auto")[-1])
+    b = _strip(format_status_lines({**base, "usage_seq": 8}, model="Auto")[-1])
     assert "#7" in a and "#8" in b
+
+
+def test_stale_badge_when_auto_dead() -> None:
+    plain = _strip(
+        format_status_lines(
+            {
+                "action": "ok",
+                "total_pct": 42.0,
+                "plan_status": "OK",
+                "usage_seq": 251,
+                "_stale": True,
+            },
+            model="Auto",
+        )[-1]
+    )
+    assert "STALE" in plain
+    assert "42.0%" in plain

@@ -12,6 +12,16 @@ from typing import Any, Dict, Optional, Tuple
 
 USAGE_URL = "https://cursor.com/api/usage-summary"
 
+
+class ApiError(Exception):
+    """对齐 Common/client.py：带 status + JSON payload 的 HTTP 错误。"""
+
+    def __init__(self, status: int, payload: Dict[str, Any]):
+        self.status = status
+        self.payload = payload or {}
+        super().__init__(f"HTTP {status}: {payload}")
+
+
 # 对齐 Common/client.py：浏览器头；本地 7890 等代理对 cursor.com 常 SSL EOF，用量走直连。
 _USAGE_HEADERS = {
     "Accept": "*/*",
@@ -83,6 +93,8 @@ def is_transient_net_error(exc: BaseException) -> bool:
 
 def short_error(exc: BaseException) -> str:
     """statusline / 日志用短错误标签，避免整段 urlopen SSL 原文。"""
+    if isinstance(exc, ApiError):
+        return f"HTTP{exc.status}"
     text = str(exc)
     low = text.lower()
     if "unexpected_eof" in low or "eof occurred" in low:
@@ -139,7 +151,14 @@ def _http_json(
                 return json.loads(raw) if raw else {}
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"HTTP {exc.code}: {detail[:200]}") from exc
+            payload: Dict[str, Any]
+            try:
+                payload = json.loads(detail) if detail else {}
+                if not isinstance(payload, dict):
+                    payload = {"error": detail[:200]}
+            except Exception:
+                payload = {"error": detail[:200]}
+            raise ApiError(exc.code, payload) from exc
         except (urllib.error.URLError, TimeoutError, ssl.SSLError, OSError) as exc:
             last = exc
             if attempt >= retries or not is_transient_net_error(exc):
@@ -151,6 +170,18 @@ def _http_json(
 def pull_token(base_url: str, api_key: str, *, timeout: float = 20) -> Dict[str, Any]:
     """对齐 Common/client.py：``GET /api/v1/pull-token`` + ``X-API-Key``。"""
     url = base_url.rstrip("/") + "/api/v1/pull-token"
+    return _http_json(
+        "GET",
+        url,
+        headers={"X-API-Key": api_key},
+        timeout=timeout,
+        retries=1,
+    )
+
+
+def key_status(base_url: str, api_key: str, *, timeout: float = 20) -> Dict[str, Any]:
+    """对齐 Common/client.py：``GET /api/v1/key-status``。"""
+    url = base_url.rstrip("/") + "/api/v1/key-status"
     return _http_json(
         "GET",
         url,
@@ -202,25 +233,28 @@ def extract_tokens(data: Dict[str, Any]) -> Tuple[str, str, str, str]:
 
 
 def parse_usage(data: Dict[str, Any]) -> Dict[str, Any]:
-    """对齐 Common：总用量 = (auto + api) / 2；阈值默认 95%。"""
-    plan = (data.get("individualUsage") or {}).get("plan") or {}
+    """对齐 Common/client.py ``parse_usage``：总用量 = (auto + api) / 2。"""
+    plan = (
+        data.get("individualUsage", {}).get("plan", {})
+        if isinstance(data, dict)
+        else {}
+    )
     breakdown = plan.get("breakdown") or {}
 
-    def f(v: Any) -> float:
+    def f(v: Any, default: float = 0.0) -> float:
         try:
-            return float(v) if v is not None else 0.0
+            return float(v) if v is not None else default
         except Exception:
-            return 0.0
+            return default
 
     total = f(breakdown.get("total"))
     included = f(breakdown.get("included"))
     bonus = f(breakdown.get("bonus"))
     auto_pct = f(plan.get("autoPercentUsed"))
     api_pct = f(plan.get("apiPercentUsed"))
+    # client.py：两边都为 0 时 total_pct=0，不用 totalPercentUsed 兜底
     total_pct = (
-        (auto_pct + api_pct) / 2.0
-        if (auto_pct > 0 or api_pct > 0)
-        else f(plan.get("totalPercentUsed"))
+        (auto_pct + api_pct) / 2.0 if (auto_pct > 0 or api_pct > 0) else 0.0
     )
     used = round(total * total_pct / 100.0, 2) if total > 0 else 0.0
     remaining = max(total - used, 0.0)

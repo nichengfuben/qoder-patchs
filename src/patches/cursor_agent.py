@@ -3,12 +3,15 @@ from __future__ import annotations
 """Cursor Agent：auth 热读 + 启动自动 sc auto + statusline + `/sc pull|usage`。
 
 逆向要点：
-1. AuthStorage 内存缓存 → 强制每次 readAuthData。
-2. 进入 agent 时由 cursor-agent.cmd 引导后台 ``sc auto``（换号监测）。
-3. slash 面板注入 ``/sc``（调试：pull / usage）。
+1. AuthStorage 内存/短路缓存 → 强制每次 readAuthData / getSecret。
+2. auth-refresh 模块级 ephemeral / apiKeyOverride → 一律丢弃，Bearer 只信 credentialManager。
+3. Zn 解析器不再回落 ephemeral；工厂强制 file AuthStorage。
+4. 禁用 NODE_COMPILE_CACHE，避免补丁后仍跑旧字节码。
+5. 进入 agent 时由 cursor-agent.cmd 引导后台 ``sc auto``；slash 注入 ``/sc``。
 """
 
 import json
+import os
 import shutil
 import time
 from pathlib import Path
@@ -25,6 +28,8 @@ MARKER = "/*agentcli-hot-auth*/"
 SLASH_MARKER = "/*agentcli-sc-slash*/"
 BOOT_MARKER = "REM agentcli-sc-auto-boot"
 STATUS_INTERVAL_MARKER = "/*agentcli-status-interval*/"
+FOOTER_KEEP_MARKER = "/*agentcli-footer-keep*/"
+EPHEMERAL_NULL_MARKER = "ephemeralToken:null/*agentcli-hot-auth*/"
 
 # use-status-line.ts：上游把 updateIntervalMs 当成 debounce，不是定时器。
 # 空闲时 updateSignal 不变 → statusLine 不刷新 → 时钟卡住。
@@ -43,6 +48,46 @@ _STATUS_INTERVAL_NEW = (
     "C(E.payload);const t=setInterval((()=>C(E.payload)),w);"
     "return()=>{clearInterval(t),C.cancel(),null===(e=m.current)||void 0===e||e.abort()}"
     "}),[E,C,b,w]),{text:p,padding:y}}"
+)
+
+# prompt-footer.tsx：自定义 statusLine 原会替换模型/模式行并隐藏路径行。
+# 改为始终渲染原生页脚，SC 命令输出追加在下方。
+_FOOTER_KEEP_OLD = (
+    'void 0!==y?(0,r.jsx)(l.az,{children:y}):(0,r.jsxs)(l.az,{flexDirection:"row",'
+    'justifyContent:"space-between",alignItems:"flex-start",columnGap:2,children:['
+    '(0,r.jsxs)(l.az,{flexDirection:"row",gap:1,flexShrink:1,children:['
+    'f?(0,r.jsxs)(r.Fragment,{children:[(0,r.jsx)(l.EY,{dimColor:!0,children:f}),'
+    '(0,r.jsx)(l.EY,{dimColor:!0,children:"·"})]}):null,'
+    '(0,r.jsxs)(l.EY,{dimColor:!0,children:[n,s&&(0,r.jsxs)(l.EY,{dimColor:!0,children:[" ",s]}),'
+    'o?(0,r.jsx)(l.EY,{dimColor:!0,children:" · MAX"}):null]}),'
+    'a?(0,r.jsxs)(r.Fragment,{children:[(0,r.jsx)(l.EY,{dimColor:!0,children:"·"}),'
+    '(0,r.jsx)(l.EY,{dimColor:!0,children:a})]}):null,'
+    'p>0&&(0,r.jsxs)(r.Fragment,{children:[(0,r.jsx)(l.EY,{dimColor:!0,children:"·"}),'
+    '(0,r.jsxs)(l.EY,{dimColor:!0,children:[p," file",1===p?"":"s"," edited"]})]})]}),'
+    'A?(0,r.jsxs)(l.az,{flexShrink:0,paddingRight:1,flexDirection:"row",gap:1,children:['
+    'x?(0,r.jsx)(l.EY,{color:"magenta",children:x}):null,'
+    'h?(0,r.jsx)(l.EY,{dimColor:!0,children:h}):null]}):null]}),'
+    'void 0===y&&b&&E?(0,r.jsx)(l.az,{children:(0,r.jsxs)(l.EY,{dimColor:!0,children:['
+    'E,M?` · ${M}`:"",I?` · ${(0,u.N)({text:`#${I.number}`,url:I.url})}`:""]})}):null]'
+)
+_FOOTER_KEEP_NEW = (
+    '(0,r.jsxs)(l.az,{flexDirection:"row",'
+    'justifyContent:"space-between",alignItems:"flex-start",columnGap:2,children:['
+    '(0,r.jsxs)(l.az,{flexDirection:"row",gap:1,flexShrink:1,children:['
+    'f?(0,r.jsxs)(r.Fragment,{children:[(0,r.jsx)(l.EY,{dimColor:!0,children:f}),'
+    '(0,r.jsx)(l.EY,{dimColor:!0,children:"·"})]}):null,'
+    '(0,r.jsxs)(l.EY,{dimColor:!0,children:[n,s&&(0,r.jsxs)(l.EY,{dimColor:!0,children:[" ",s]}),'
+    'o?(0,r.jsx)(l.EY,{dimColor:!0,children:" · MAX"}):null]}),'
+    'a?(0,r.jsxs)(r.Fragment,{children:[(0,r.jsx)(l.EY,{dimColor:!0,children:"·"}),'
+    '(0,r.jsx)(l.EY,{dimColor:!0,children:a})]}):null,'
+    'p>0&&(0,r.jsxs)(r.Fragment,{children:[(0,r.jsx)(l.EY,{dimColor:!0,children:"·"}),'
+    '(0,r.jsxs)(l.EY,{dimColor:!0,children:[p," file",1===p?"":"s"," edited"]})]})]}),'
+    'A?(0,r.jsxs)(l.az,{flexShrink:0,paddingRight:1,flexDirection:"row",gap:1,children:['
+    'x?(0,r.jsx)(l.EY,{color:"magenta",children:x}):null,'
+    'h?(0,r.jsx)(l.EY,{dimColor:!0,children:h}):null]}):null]}),'
+    'b&&E?(0,r.jsx)(l.az,{children:(0,r.jsxs)(l.EY,{dimColor:!0,children:['
+    'E,M?` · ${M}`:"",I?` · ${(0,u.N)({text:`#${I.number}`,url:I.url})}`:""]})}):null,'
+    "y?(0,r.jsx)(l.az,{children:y}" + FOOTER_KEEP_MARKER + "):null]"
 )
 
 # 紧挨 /mcp 之后、/plugin 之前注入 /sc（仅 pull / usage；异步 spawn 避免卡死 UI）
@@ -86,7 +131,8 @@ _SLASH_INJECT = (
     + _SLASH_ANCHOR
 )
 
-# 原始短路缓存片段 → 强制读盘（file store + getAllCredentials + 强制非 memory 走 file）
+# 原始短路缓存 → 强制每次读盘 / 读 secret；工厂一律 file AuthStorage（忽略 memory/keychain）
+# 另：auth-refresh ephemeral / Zn 回落 / keychain getAll 短路 一并掐断。
 _REPLACEMENTS: tuple[tuple[str, str], ...] = (
     (
         "getAccessToken(){return o(this,void 0,void 0,(function*(){var e;if(this.cachedAccessToken)return this.cachedAccessToken;const t=yield this.readAuthData();return(null==t?void 0:t.accessToken)?(this.cachedAccessToken=t.accessToken,this.cachedRefreshToken=null!==(e=t.refreshToken)&&void 0!==e?e:null,t.accessToken):void 0}))}",
@@ -104,11 +150,113 @@ _REPLACEMENTS: tuple[tuple[str, str], ...] = (
         "getAllCredentials(){return o(this,void 0,void 0,(function*(){if(null!==this.cachedAccessToken&&null!==this.cachedRefreshToken)return{accessToken:this.cachedAccessToken||void 0,refreshToken:this.cachedRefreshToken||void 0,apiKey:this.cachedApiKey||void 0};const e=yield this.readAuthData();return e?(this.cachedAccessToken=e.accessToken||null,this.cachedRefreshToken=e.refreshToken||null,this.cachedApiKey=e.apiKey||null,{accessToken:e.accessToken||void 0,refreshToken:e.refreshToken||void 0,apiKey:e.apiKey||void 0}):{accessToken:void 0,refreshToken:void 0,apiKey:void 0}}))}",
         "getAllCredentials(){return o(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const e=yield this.readAuthData();return e?(this.cachedAccessToken=e.accessToken||null,this.cachedRefreshToken=e.refreshToken||null,this.cachedApiKey=e.apiKey||null,{accessToken:e.accessToken||void 0,refreshToken:e.refreshToken||void 0,apiKey:e.apiKey||void 0}):(this.cachedAccessToken=null,this.cachedRefreshToken=null,this.cachedApiKey=null,{accessToken:void 0,refreshToken:void 0,apiKey:void 0})}))}",
     ),
+    # secret/keychain store：去掉内存短路
+    (
+        "getAccessToken(){return c(this,void 0,void 0,(function*(){if(this.cachedAccessToken)return this.cachedAccessToken;const e=yield this.getSecret(this.accessTokenService);return e?(this.cachedAccessToken=e,e):void 0}))}",
+        "getAccessToken(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const e=yield this.getSecret(this.accessTokenService);return e?(this.cachedAccessToken=e,e):(this.cachedAccessToken=null,void 0)}))}",
+    ),
+    (
+        "getRefreshToken(){return c(this,void 0,void 0,(function*(){if(this.cachedRefreshToken)return this.cachedRefreshToken;const e=yield this.getSecret(this.refreshTokenService);return e?(this.cachedRefreshToken=e,e):void 0}))}",
+        "getRefreshToken(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const e=yield this.getSecret(this.refreshTokenService);return e?(this.cachedRefreshToken=e,e):(this.cachedRefreshToken=null,void 0)}))}",
+    ),
+    (
+        "getApiKey(){return c(this,void 0,void 0,(function*(){if(this.cachedApiKey)return this.cachedApiKey;const e=yield this.getSecret(this.apiKeyService);return e?(this.cachedApiKey=e,e):void 0}))}",
+        "getApiKey(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const e=yield this.getSecret(this.apiKeyService);return e?(this.cachedApiKey=e,e):(this.cachedApiKey=null,void 0)}))}",
+    ),
+    (
+        "getAllCredentials(){return c(this,void 0,void 0,(function*(){if(null!==this.cachedAccessToken&&null!==this.cachedRefreshToken)return{accessToken:this.cachedAccessToken||void 0,refreshToken:this.cachedRefreshToken||void 0,apiKey:this.cachedApiKey||void 0};const[e,t,n]=yield Promise.all([null!==this.cachedAccessToken?Promise.resolve(this.cachedAccessToken||void 0):this.getSecret(this.accessTokenService),null!==this.cachedRefreshToken?Promise.resolve(this.cachedRefreshToken||void 0):this.getSecret(this.refreshTokenService),null!==this.cachedApiKey?Promise.resolve(this.cachedApiKey||void 0):this.getSecret(this.apiKeyService)]);return this.cachedAccessToken=e||null,this.cachedRefreshToken=t||null,this.cachedApiKey=n||null,{accessToken:e,refreshToken:t,apiKey:n}}))}",
+        "getAllCredentials(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const[e,t,n]=yield Promise.all([this.getSecret(this.accessTokenService),this.getSecret(this.refreshTokenService),this.getSecret(this.apiKeyService)]);return this.cachedAccessToken=e||null,this.cachedRefreshToken=t||null,this.cachedApiKey=n||null,{accessToken:e,refreshToken:t,apiKey:n}}))}",
+    ),
+    # memory AuthStorage：禁止返回进程内字段（工厂已强制 file；此为兜底）
+    (
+        "getAccessToken(){return d(this,void 0,void 0,(function*(){var e;return null!==(e=this.accessToken)&&void 0!==e?e:void 0}))}",
+        "getAccessToken(){return d(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return void 0}))}",
+    ),
+    (
+        "getRefreshToken(){return d(this,void 0,void 0,(function*(){var e;return null!==(e=this.refreshToken)&&void 0!==e?e:void 0}))}",
+        "getRefreshToken(){return d(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return void 0}))}",
+    ),
+    (
+        "getApiKey(){return d(this,void 0,void 0,(function*(){var e;return null!==(e=this.apiKey)&&void 0!==e?e:void 0}))}",
+        "getApiKey(){return d(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return void 0}))}",
+    ),
+    # 工厂：一律 file AuthStorage，保证与 sc 写入的 auth.json 同源热读
     (
         'function A(e){var t;const n=null!==(t=e.store)&&void 0!==t?t:"default";return"memory"===n?new m:"file"===n?new a(e.domain):"darwin"===(0,r.platform)()?new u(e.domain):new a(e.domain)}',
+        "function A(e){/*agentcli-hot-auth*/return new a(e.domain)}",
+    ),
+    # 兼容已应用旧版「保留 memory」工厂补丁的回滚/再应用
+    (
         'function A(e){var t;const n=null!==(t=e.store)&&void 0!==t?t:"default";return"memory"===n?new m:new a(e.domain)/*agentcli-hot-auth*/}',
+        "function A(e){/*agentcli-hot-auth*/return new a(e.domain)}",
+    ),
+    # auth-refresh：模块级 ephemeral / apiKeyOverride 永不生效
+    (
+        "function l(e){i=null!=e?e:null}",
+        "function l(e){/*agentcli-hot-auth*/i=null}",
+    ),
+    (
+        "function c(e){o=null!=e?e:null}",
+        "function c(e){/*agentcli-hot-auth*/o=null}",
+    ),
+    # uX：Bearer 解析时 ephemeral 恒为 null，只信 getAccessToken()（读盘）
+    (
+        "return yield(0,r.Zn)({currentToken:l,ephemeralToken:i,isTokenExpiringSoon:a,",
+        "return yield(0,r.Zn)({currentToken:l,ephemeralToken:null/*agentcli-hot-auth*/,isTokenExpiringSoon:a,",
+    ),
+    # Zn：忽略 ephemeral 回落；有盘上 token 且未过期则直接用，否则 refresh
+    (
+        "function k(e){return v(this,void 0,void 0,(function*(){const{currentToken:t,ephemeralToken:n,isTokenExpiringSoon:r,refreshToken:s}=e;if(!t){if(n){if(!r(n))return n;const e=yield s();return null!=e?e:n}return yield s()}if(!r(t))return t;return(yield s())||(n&&!r(n)?n:t)}))}",
+        "function k(e){return v(this,void 0,void 0,(function*(){const{currentToken:t,isTokenExpiringSoon:r,refreshToken:s}=e;/*agentcli-hot-auth*/if(t&&!r(t))return t;if(t){const e=yield s();return null!=e?e:t}return yield s()}))}",
+    ),
+    # 登录成功写入 ephemeral 时改为清掉，只依赖 persist→auth.json
+    (
+        "function I(e){return v(this,void 0,void 0,(function*(){const{accessToken:t,persist:n,setEphemeralToken:r}=e;r(t),yield n()}))}",
+        "function I(e){return v(this,void 0,void 0,(function*(){const{accessToken:t,persist:n,setEphemeralToken:r}=e;/*agentcli-hot-auth*/r(null),yield n()}))}",
     ),
 )
+
+# cursor-agent.ps1：关掉 Node compile cache，保证 index.js 热补丁字节码不被旧缓存顶替
+_COMPILE_CACHE_OLD = (
+    "## Enable Node.js compile cache for faster CLI startup (requires Node.js >= 22.1.0)\n"
+    "## Cache is automatically invalidated when source files change\n"
+    "if (-not $env:NODE_COMPILE_CACHE) {\n"
+    '    $env:NODE_COMPILE_CACHE = "$env:LOCALAPPDATA\\cursor-compile-cache"\n'
+    "}"
+)
+_COMPILE_CACHE_NEW = (
+    "## agentcli-hot-auth: disable NODE_COMPILE_CACHE so index.js patches always load\n"
+    "Remove-Item Env:NODE_COMPILE_CACHE -ErrorAction SilentlyContinue\n"
+)
+
+
+def apply_hot_auth_replacements(content: str) -> tuple[str, int]:
+    """对原始/已部分打补丁的 index.js 文本应用全部 hot-auth 替换。
+
+    Returns:
+        (modified_text, hit_count) — hit_count 含「本次替换」与「已是目标形态」。
+    """
+    modified = content
+    hits = 0
+    for old, new in _REPLACEMENTS:
+        if old in modified:
+            modified = modified.replace(old, new, 1)
+            hits += 1
+        elif new in modified:
+            hits += 1
+    return modified, hits
+
+
+def clear_node_compile_cache() -> Optional[Path]:
+    """删除 %LOCALAPPDATA%\\cursor-compile-cache，迫使下次冷加载 index.js。"""
+    local = os.environ.get("LOCALAPPDATA")
+    if not local:
+        return None
+    cache = Path(local) / "cursor-compile-cache"
+    if cache.is_dir():
+        shutil.rmtree(cache, ignore_errors=True)
+        return cache
+    return None
 
 _BOOT_BLOCK = f"""{BOOT_MARKER}
 REM Start sc auto via helper script (avoids cmd quoting bugs); parent=cmd.exe
@@ -119,14 +267,27 @@ _SC_AUTOBOOT_PS1 = r"""$ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $sc = Join-Path $root "sc.cmd"
 if (-not (Test-Path -LiteralPath $sc)) { exit 0 }
-try {
-  $pp = (Get-CimInstance Win32_Process -Filter ("ProcessId=" + $PID)).ParentProcessId
-} catch {
-  $pp = 0
+# 已有新鲜 leader 心跳则不重复拉起，避免 agent 每次启动叠 trop 多实例抢写 status。
+$inst = Join-Path $env:USERPROFILE ".cursor\sc_instances.json"
+if (Test-Path -LiteralPath $inst) {
+  try {
+    $doc = Get-Content -LiteralPath $inst -Raw -Encoding UTF8 | ConvertFrom-Json
+    $lid = $doc.leader_id
+    if ($lid) {
+      $info = $doc.instances.$lid
+      if ($null -ne $info -and $null -ne $info.heartbeat_at) {
+        $hb = [double]$info.heartbeat_at
+        $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        # Python time.time() 是本地 epoch 秒；与 UTC epoch 相同
+        if (($now - $hb) -lt 10) { exit 0 }
+      }
+    }
+  } catch {}
 }
-$args = @("auto", "--fg")
-if ($pp -gt 0) { $args += @("--parent", "$pp") }
-Start-Process -FilePath $sc -ArgumentList $args -WindowStyle Hidden | Out-Null
+# 不绑 --parent：cmd/powershell 短命父进程会导致 auto 被误杀，statusLine 长期 STALE。
+# 多实例靠 sc_instances 心跳选举 leader；退出用 sc auto stop 或进程结束。
+$argv = @("auto", "--fg")
+Start-Process -FilePath $sc -ArgumentList $argv -WindowStyle Hidden | Out-Null
 """
 
 # Ctrl+C 时避免 "Terminate batch job (Y/N)?"：endlocal 后脱离 batch 再等 PowerShell
@@ -229,11 +390,10 @@ class CursorAgentPatch(PatchBase):
             name="cursor-agent",
             display_name="Cursor Agent 热更新与自动换号",
             description=(
-                "去掉 AuthStorage 内存缓存；启动 agent 时自动后台 sc auto；"
-                "注入 /sc pull|usage；安装 statusline；"
-                "修补 use-status-line 按 updateIntervalMs 定时刷新（上游仅 debounce）。"
+                "AuthStorage/keychain/ephemeral 全部强制读盘；禁用 NODE_COMPILE_CACHE；"
+                "启动 agent 时自动后台 sc auto；注入 /sc pull|usage；statusline 定时刷新。"
             ),
-            version="2.2.0",
+            version="2.3.0",
             author="nichengfuben",
             target_files=(
                 "index.js",
@@ -289,9 +449,14 @@ class CursorAgentPatch(PatchBase):
         text = index.read_text(encoding="utf-8", errors="ignore")
         root = find_cursor_agent_root()
         sc_ok = bool(root and (root / "sc.cmd").exists() and (root / "sc-statusline.cmd").exists())
-        hot_ok = MARKER in text
+        hot_ok = MARKER in text and EPHEMERAL_NULL_MARKER in text
         interval_ok = any(
             STATUS_INTERVAL_MARKER in p.read_text(encoding="utf-8", errors="ignore")
+            for p in target.glob("*.index.js")
+            if p.is_file()
+        )
+        footer_ok = any(
+            FOOTER_KEEP_MARKER in p.read_text(encoding="utf-8", errors="ignore")
             for p in target.glob("*.index.js")
             if p.is_file()
         )
@@ -301,28 +466,66 @@ class CursorAgentPatch(PatchBase):
             if boot_cmd.exists():
                 boot_ok = BOOT_MARKER in boot_cmd.read_text(encoding="utf-8", errors="ignore")
         slash_ok = len(self._slash_chunks(target)) > 0
-        if hot_ok and sc_ok and boot_ok and slash_ok and interval_ok:
+        if hot_ok and sc_ok and boot_ok and slash_ok and interval_ok and footer_ok:
             return PatchStatus.APPLIED
-        if hot_ok or sc_ok or boot_ok or slash_ok or interval_ok:
+        if hot_ok or sc_ok or boot_ok or slash_ok or interval_ok or footer_ok:
             return PatchStatus.PARTIAL
         return PatchStatus.NOT_APPLIED
 
     def _patch_hot_auth(self, index: Path, dry_run: bool) -> tuple[int, Optional[Path], Optional[Path]]:
         content = index.read_text(encoding="utf-8", errors="ignore")
-        modified = content
-        hits = 0
-        for old, new in _REPLACEMENTS:
-            if old in modified:
-                modified = modified.replace(old, new, 1)
-                hits += 1
-            elif MARKER in modified and old.split("){")[0] in modified:
-                hits += 1
+        modified, hits = apply_hot_auth_replacements(content)
         if dry_run or modified == content:
             return hits, None, None
+        self._assert_js_syntax(index, modified)
         bak = index.with_suffix(index.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
         bak.write_text(content, encoding="utf-8")
         index.write_text(modified, encoding="utf-8")
         return hits, index, bak
+
+    def _patch_compile_cache_ps1(
+        self, root: Path, dry_run: bool
+    ) -> tuple[int, list[Path], list[Path]]:
+        """根目录与当前 version 的 cursor-agent.ps1：禁用 NODE_COMPILE_CACHE。"""
+        files: list[Path] = []
+        backups: list[Path] = []
+        hits = 0
+        candidates = [root / "cursor-agent.ps1"]
+        bundle = find_cursor_agent_bundle()
+        if bundle is not None:
+            candidates.append(bundle / "cursor-agent.ps1")
+        seen: set[Path] = set()
+        for path in candidates:
+            try:
+                resolved = path.resolve()
+            except OSError:
+                resolved = path
+            if resolved in seen or not path.is_file():
+                continue
+            seen.add(resolved)
+            try:
+                text = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            if "agentcli-hot-auth: disable NODE_COMPILE_CACHE" in text:
+                hits += 1
+                continue
+            if _COMPILE_CACHE_OLD not in text:
+                continue
+            hits += 1
+            if dry_run:
+                continue
+            bak = path.with_suffix(path.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
+            bak.write_text(text, encoding="utf-8")
+            backups.append(bak)
+            path.write_text(
+                text.replace(_COMPILE_CACHE_OLD, _COMPILE_CACHE_NEW, 1),
+                encoding="utf-8",
+                newline="\n",
+            )
+            files.append(path)
+            logger.info("Disabled NODE_COMPILE_CACHE in {}", path)
+        return hits, files, backups
 
     def _patch_statusline_interval(
         self, bundle_dir: Path, dry_run: bool
@@ -372,6 +575,61 @@ class CursorAgentPatch(PatchBase):
                 hits += 1
                 continue
             restored = text.replace(_STATUS_INTERVAL_NEW, _STATUS_INTERVAL_OLD, 1)
+            if restored == text:
+                continue
+            chunk.write_text(restored, encoding="utf-8")
+            files.append(chunk)
+            hits += 1
+        return hits, files
+
+    def _patch_footer_keep(
+        self, bundle_dir: Path, dry_run: bool
+    ) -> tuple[int, list[Path], list[Path]]:
+        """保留原生页脚，SC statusLine 只追加一行。"""
+        files: list[Path] = []
+        backups: list[Path] = []
+        hits = 0
+        for chunk in bundle_dir.glob("*.index.js"):
+            try:
+                text = chunk.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            if FOOTER_KEEP_MARKER in text:
+                hits += 1
+                continue
+            if _FOOTER_KEEP_OLD not in text:
+                continue
+            if dry_run:
+                hits += 1
+                continue
+            bak = chunk.with_suffix(chunk.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
+            bak.write_text(text, encoding="utf-8")
+            chunk.write_text(
+                text.replace(_FOOTER_KEEP_OLD, _FOOTER_KEEP_NEW, 1),
+                encoding="utf-8",
+            )
+            files.append(chunk)
+            backups.append(bak)
+            hits += 1
+            logger.info("Patched prompt-footer keep-native in {}", chunk.name)
+        return hits, files, backups
+
+    def _strip_footer_keep(
+        self, bundle_dir: Path, dry_run: bool
+    ) -> tuple[int, list[Path]]:
+        files: list[Path] = []
+        hits = 0
+        for chunk in bundle_dir.glob("*.index.js"):
+            try:
+                text = chunk.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            if _FOOTER_KEEP_NEW not in text and FOOTER_KEEP_MARKER not in text:
+                continue
+            if dry_run:
+                hits += 1
+                continue
+            restored = text.replace(_FOOTER_KEEP_NEW, _FOOTER_KEEP_OLD, 1)
             if restored == text:
                 continue
             chunk.write_text(restored, encoding="utf-8")
@@ -531,12 +789,17 @@ class CursorAgentPatch(PatchBase):
         hot_hits, _, _ = self._patch_hot_auth(index, dry_run=True)
         root = find_cursor_agent_root()
         interval_hits, _, _ = self._patch_statusline_interval(target, dry_run=True)
+        footer_hits, _, _ = self._patch_footer_keep(target, dry_run=True)
+        ps1_hits, _, _ = (
+            self._patch_compile_cache_ps1(root, dry_run=True) if root else (0, [], [])
+        )
 
         if dry_run:
             return PatchResult(
                 status=PatchStatus.APPLIED if hot_hits >= 1 or MARKER in content else PatchStatus.FAILED,
                 message=(
                     f"[dry-run] hot-auth hits={hot_hits}, status-interval={interval_hits}, "
+                    f"footer-keep={footer_hits}, compile-cache-ps1={ps1_hits}, "
                     f"would install sc/auto-boot at {root}"
                 ),
                 patch_name=self.metadata.name,
@@ -561,6 +824,14 @@ class CursorAgentPatch(PatchBase):
             backups.append(hot_bak)
             logger.info("Patched hot-auth in {}", index)
 
+        if root is not None:
+            _, ps1_files, ps1_baks = self._patch_compile_cache_ps1(root, dry_run=False)
+            files.extend(ps1_files)
+            backups.extend(ps1_baks)
+        cleared = clear_node_compile_cache()
+        if cleared:
+            logger.info("Cleared NODE_COMPILE_CACHE dir {}", cleared)
+
         stripped, slash_files, slash_baks = self._inject_slash(target, dry_run=False)
         files.extend(slash_files)
         backups.extend(slash_baks)
@@ -569,7 +840,12 @@ class CursorAgentPatch(PatchBase):
         files.extend(iv_files)
         backups.extend(iv_baks)
 
-        cfg_copied = ensure_sc_config_from_client(force=True)
+        ft_hits, ft_files, ft_baks = self._patch_footer_keep(target, dry_run=False)
+        files.extend(ft_files)
+        backups.extend(ft_baks)
+
+        # 勿 force：避免每次 apply 把 Common 的 switch_threshold=80 盖掉本地 95%
+        cfg_copied = ensure_sc_config_from_client(force=False)
         if cfg_copied:
             files.append(cfg_copied)
 
@@ -602,8 +878,9 @@ class CursorAgentPatch(PatchBase):
         return PatchResult(
             status=PatchStatus.APPLIED,
             message=(
-                f"hot-auth + auto-boot + /sc slash + statusline 已应用 "
-                f"(hot={hot_hits}, slash={stripped}, interval={iv_hits}, boot={boot_ok}, "
+                f"hot-auth(v2 ephemeral-off) + auto-boot + /sc + statusline 已应用 "
+                f"(hot={hot_hits}, slash={stripped}, interval={iv_hits}, footer={ft_hits}, "
+                f"boot={boot_ok}, "
                 f"launchers={ag_ok}, config={cfg_copied}, root={root})"
             ),
             patch_name=self.metadata.name,
@@ -633,7 +910,7 @@ class CursorAgentPatch(PatchBase):
         if dry_run:
             return PatchResult(
                 status=PatchStatus.NOT_APPLIED,
-                message="[dry-run] would rollback hot-auth, boot, slash, sc launchers",
+                message="[dry-run] would rollback hot-auth, footer-keep, boot, slash, sc launchers",
                 patch_name=self.metadata.name,
                 duration_ms=int((time.monotonic() - start) * 1000),
             )
@@ -644,6 +921,8 @@ class CursorAgentPatch(PatchBase):
         files.extend(slash_files)
         _, iv_files = self._strip_statusline_interval(target, dry_run=False)
         files.extend(iv_files)
+        _, ft_files = self._strip_footer_keep(target, dry_run=False)
+        files.extend(ft_files)
         root = find_cursor_agent_root()
         if root:
             cmd = root / "cursor-agent.cmd"
@@ -686,7 +965,7 @@ class CursorAgentPatch(PatchBase):
                     files.append(p)
         return PatchResult(
             status=PatchStatus.NOT_APPLIED,
-            message="已回滚 hot-auth、status-interval、auto-boot、slash，并移除 sc 启动器",
+            message="已回滚 hot-auth、status-interval、footer-keep、auto-boot、slash，并移除 sc 启动器",
             patch_name=self.metadata.name,
             files_modified=files,
             duration_ms=int((time.monotonic() - start) * 1000),

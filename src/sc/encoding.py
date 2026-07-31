@@ -11,12 +11,13 @@ def ensure_utf8_stdio() -> None:
     """进程内尽早调用：环境变量 + stdout/stderr UTF-8（不改 stdin，避免破坏 pytest/管道）。"""
     os.environ["PYTHONUTF8"] = "1"
     os.environ["PYTHONIOENCODING"] = "utf-8"
+    os.environ.setdefault("PYTHONUNBUFFERED", "1")
     for name in ("stdout", "stderr"):
         stream = getattr(sys, name, None)
         if stream is None:
             continue
         try:
-            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+            stream.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)  # type: ignore[attr-defined]
             continue
         except Exception:
             pass
@@ -41,4 +42,5 @@ def utf8_env(base: dict | None = None) -> dict:
     env = dict(base or os.environ)
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUNBUFFERED"] = "1"
     return env
