@@ -15,10 +15,10 @@ Re-exports key utilities from submodules for convenient access:
 - :func:`get_env_safe` -- safe environment variable access
 """
 
-from qoder_patchs.utils.backup import BackupManager
-from qoder_patchs.utils.logging import setup_logging
-from qoder_patchs.utils.paths import find_bundle_dir, get_backup_dir, get_project_root
-from qoder_patchs.utils.platform import (
+from utils.backup import BackupManager
+from utils.logging import setup_logging
+from utils.paths import find_bundle_dir, get_backup_dir, get_project_root
+from utils.platform import (
     check_dependencies,
     create_scheduled_task,
     get_env_safe,

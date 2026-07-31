@@ -15,9 +15,9 @@ from typing import Any, Optional
 
 from loguru import logger
 
-from qoder_patchs.core.config import AppConfig
-from qoder_patchs.core.patch_base import PatchBase, PatchResult, PatchStatus
-from qoder_patchs.core.registry import PatchRegistry
+from core.config import AppConfig
+from core.patch_base import PatchBase, PatchResult, PatchStatus
+from core.registry import PatchRegistry
 
 
 class PatchEngine:

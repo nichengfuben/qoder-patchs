@@ -1,4 +1,4 @@
-"""CLI interface for Qoder Patch Manager.
+"""CLI interface for AgentCLI Patchs.
 
 Provides Typer-based command-line interface with:
 - Interactive menus (Questionary)
@@ -6,25 +6,28 @@ Provides Typer-based command-line interface with:
 - ASCII art banner (charmap)
 """
 
-from qoder_patchs.cli.app import typer_app
-from qoder_patchs.cli.charmap import (
+__version__ = "2.1.0"
+
+from cli.app import typer_app
+from cli.charmap import (
     BLUE_GRADIENT_PALETTE,
     render_gradient_banner,
     render_text,
 )
-from qoder_patchs.cli.commands.theme import (
+from cli.commands.theme import (
     BLUE_THEME,
     BluePalette,
     get_console,
     get_questionary_style,
 )
-from qoder_patchs.cli.ui import BlueCLI
+from cli.ui import BlueCLI
 
 __all__ = [
     "BLUE_GRADIENT_PALETTE",
     "BLUE_THEME",
     "BlueCLI",
     "BluePalette",
+    "__version__",
     "get_console",
     "get_questionary_style",
     "render_gradient_banner",

@@ -1,6 +1,6 @@
-"""Config sub-commands (`qoder-patchs config show|set`).
+"""Config sub-commands (`agentcli-patchs config show|set`).
 
-Split out of :mod:`qoder_patchs.cli.app` to keep that module within the
+Split out of :mod:`cli.app` to keep that module within the
 project's per-file line limit.
 """
 
@@ -17,7 +17,7 @@ config_app = typer.Typer(
 @config_app.command("show")
 def config_show() -> None:
     """显示当前配置."""  # 显示当前配置.
-    from qoder_patchs.cli import app
+    from cli import app
 
     config = app._get_config()
     cli = app._get_cli()
@@ -66,7 +66,7 @@ def config_set(
     ),
 ) -> None:
     """修改配置项."""  # 修改配置项.
-    from qoder_patchs.cli import app
+    from cli import app
 
     config = app._get_config()
     cli = app._get_cli()
@@ -81,7 +81,7 @@ def config_set(
         new_value = _coerce_config_set_value(current, value)
         setattr(obj, parts[-1], new_value)
 
-        from qoder_patchs.core.config import resolve_config_path
+        from core.config import resolve_config_path
 
         config_path = resolve_config_path(app._state.get("config_path"))
         if config_path:

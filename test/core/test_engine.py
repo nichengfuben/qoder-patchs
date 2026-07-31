@@ -1,4 +1,4 @@
-"""Tests for qoder_patchs.core.engine module.
+"""Tests for core.engine module.
 
 Covers apply, apply_all, status, rollback, and unknown patch handling.
 """
@@ -10,15 +10,15 @@ from typing import Optional
 
 import pytest
 
-from qoder_patchs.core.config import AppConfig
-from qoder_patchs.core.engine import PatchEngine
-from qoder_patchs.core.patch_base import (
+from core.config import AppConfig
+from core.engine import PatchEngine
+from core.patch_base import (
     PatchBase,
     PatchMetadata,
     PatchResult,
     PatchStatus,
 )
-from qoder_patchs.core.registry import PatchRegistry
+from core.registry import PatchRegistry
 
 
 # ---------------------------------------------------------------------------

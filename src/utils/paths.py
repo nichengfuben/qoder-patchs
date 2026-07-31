@@ -1,4 +1,4 @@
-"""Path resolution utilities for qoder-patchs.
+"""Path resolution utilities for agentcli-patchs.
 
 Provides multi-strategy bundle directory discovery, project root resolution,
 and backup directory management. The bundle directory search implements
@@ -20,7 +20,7 @@ from typing import Optional, TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
-    from qoder_patchs.core.config import AppConfig
+    from core.config import AppConfig
 
 
 # The npm package path for the Qoder CLI bundle (relative to npm global prefix)
@@ -54,7 +54,7 @@ def find_bundle_dir(config: Optional["AppConfig"] = None) -> Optional[Path]:
 
     Strategies (in order):
         A. ``config.paths.bundle_dir`` -- explicit config override
-        B. ``QODER_PATCHS_BUNDLE`` environment variable
+        B. ``AGENTCLI_PATCHS_BUNDLE`` environment variable
         C. ``npm prefix -g`` -- npm global installation prefix
         D. ``APPDATA``-based path -- Windows standard location
         E. Common installation paths -- well-known locations
@@ -81,17 +81,16 @@ def get_project_root() -> Path:
 
     Determined by walking up from this file's location::
 
-        paths.py -> utils/ -> qoder_patchs/ -> src/ -> project_root/
+        paths.py -> utils/ -> src/ -> project_root/
 
     Returns:
         Absolute :class:`Path` to the project root directory.
     """
     # __file__ -> utils/paths.py
     # .parent -> utils/
-    # .parent -> qoder_patchs/
     # .parent -> src/
     # .parent -> project root
-    return Path(__file__).resolve().parent.parent.parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def get_backup_dir(config: Optional["AppConfig"] = None) -> Path:
@@ -168,10 +167,10 @@ def _strategy_config(config: Optional["AppConfig"]) -> Optional[Path]:
 
 
 def _strategy_env_var() -> Optional[Path]:
-    """Strategy B: Use QODER_PATCHS_BUNDLE environment variable."""
-    env_path = os.environ.get("QODER_PATCHS_BUNDLE")
+    """Strategy B: Use AGENTCLI_PATCHS_BUNDLE environment variable."""
+    env_path = os.environ.get("AGENTCLI_PATCHS_BUNDLE")
     if not env_path:
-        logger.debug("Strategy B: QODER_PATCHS_BUNDLE not set, skipping")
+        logger.debug("Strategy B: AGENTCLI_PATCHS_BUNDLE not set, skipping")
         return None
 
     path = Path(env_path)

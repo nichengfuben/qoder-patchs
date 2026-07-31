@@ -3,16 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "qoder-patchs"
-version = "2.0.0"
-description = "Qoder CLI 补丁管理工具 -- 交互式菜单, 可扩展补丁系统"
+name = "agentcli-patchs"
+version = "2.1.0"
+description = "Agent CLI 补丁管理：Qoder Win10 警告、Cursor Agent auth 热更新与 /sc 便携换号"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
 authors = [
     { name = "nichengfuben" },
 ]
-keywords = ["cli", "patch", "qoder", "windows", "tool"]
+keywords = ["cli", "patch", "qoder", "cursor-agent", "sc", "windows"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -47,14 +47,17 @@ dev = [
 ]
 
 [project.scripts]
-qoder-patchs = "qoder_patchs.cli.app:typer_app"
-qp = "qoder_patchs.cli.app:typer_app"
+agentcli-patchs = "cli.app:typer_app"
+acp = "cli.app:typer_app"
+qp = "cli.app:typer_app"
+sc = "sc.cli:main"
 
-[project.entry-points."qoder_patchs.patches"]
-win10-warning = "qoder_patchs.patches.win10_warning:Win10WarningPatch"
+[project.entry-points."patches"]
+win10-warning = "patches.win10_warning:Win10WarningPatch"
+cursor-agent = "patches.cursor_agent:CursorAgentPatch"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/qoder_patchs"]
+packages = ["src/cli", "src/core", "src/patches", "src/sc", "src/utils"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

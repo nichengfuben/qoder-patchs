@@ -1,4 +1,4 @@
-"""Logging configuration for qoder-patchs.
+"""Logging configuration for agentcli-patchs.
 
 Provides a single setup function that configures Loguru with colored
 console output and an optional rotating file handler.

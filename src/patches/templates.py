@@ -28,7 +28,7 @@ Creating a timestamped backup inline::
 
 Using :class:`BackupManager` instead (recommended for production patches)::
 
-    from qoder_patchs.utils.backup import BackupManager
+    from utils.backup import BackupManager
     bm = BackupManager(keep_count=3)
     backup_path = bm.create_backup(fpath)
     bm.cleanup_old_backups(fpath)
@@ -53,7 +53,7 @@ from typing import Optional
 
 from loguru import logger
 
-from qoder_patchs.core.patch_base import PatchBase, PatchMetadata, PatchResult, PatchStatus
+from core.patch_base import PatchBase, PatchMetadata, PatchResult, PatchStatus
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +255,7 @@ NEW_PATCH_CHECKLIST = """
 New Patch Checklist
 ===================
 
-1. [ ] Create ``src/qoder_patchs/patches/<snake_case>.py``
+1. [ ] Create ``src/patches/<snake_case>.py``
 2. [ ] Class inherits from ``PatchBase``
 3. [ ] ``metadata`` property returns a ``PatchMetadata`` with:
        - unique kebab-case ``name``
@@ -268,5 +268,5 @@ New Patch Checklist
 7. [ ] ``rollback()`` restores from the most recent backup
 8. [ ] Import the class in ``patches/__init__.py``
 9. [ ] Add tests in ``test/patches/test_<name>.py``
-10. [ ] Run ``python -c "from qoder_patchs.patches.<module> import <Class>"``
+10. [ ] Run ``python -c "from patches.<module> import <Class>"``
 """

@@ -8,16 +8,16 @@ convenient access to the main components:
 - PatchEngine: Patch execution engine
 """
 
-from qoder_patchs.core.config import (
+from core.config import (
     AppConfig,
     PatchSettings,
     PathSettings,
     PersistenceSettings,
     UISettings,
 )
-from qoder_patchs.core.engine import PatchEngine
-from qoder_patchs.core.patch_base import PatchBase, PatchMetadata, PatchResult, PatchStatus
-from qoder_patchs.core.registry import PatchRegistry
+from core.engine import PatchEngine
+from core.patch_base import PatchBase, PatchMetadata, PatchResult, PatchStatus
+from core.registry import PatchRegistry
 
 __all__ = [
     "AppConfig",

@@ -1,4 +1,4 @@
-"""Tests for qoder_patchs.utils.paths module.
+"""Tests for utils.paths module.
 
 Covers find_bundle_dir strategies and get_project_root.
 """
@@ -11,8 +11,8 @@ from unittest.mock import patch as mock_patch
 
 import pytest
 
-from qoder_patchs.core.config import AppConfig
-from qoder_patchs.utils.paths import (
+from core.config import AppConfig
+from utils.paths import (
     find_bundle_dir,
     get_backup_dir,
     get_project_root,
@@ -53,7 +53,7 @@ class TestFindBundleDirFromConfig:
 
 
 class TestFindBundleDirFromEnv:
-    """Test Strategy B: QODER_PATCHS_BUNDLE environment variable."""
+    """Test Strategy B: AGENTCLI_PATCHS_BUNDLE environment variable."""
 
     def test_find_bundle_dir_from_env(self, tmp_path: Path):
         # Create a valid bundle dir
@@ -61,7 +61,7 @@ class TestFindBundleDirFromEnv:
         bundle.mkdir()
         (bundle / "qodercli.js").write_text("// bundle", encoding="utf-8")
 
-        with mock_patch.dict(os.environ, {"QODER_PATCHS_BUNDLE": str(bundle)}):
+        with mock_patch.dict(os.environ, {"AGENTCLI_PATCHS_BUNDLE": str(bundle)}):
             result = find_bundle_dir(None)
             assert result == bundle
 
@@ -69,7 +69,7 @@ class TestFindBundleDirFromEnv:
         """Invalid env var path should fall through."""
         with mock_patch.dict(
             os.environ,
-            {"QODER_PATCHS_BUNDLE": str(tmp_path / "nonexistent")},
+            {"AGENTCLI_PATCHS_BUNDLE": str(tmp_path / "nonexistent")},
         ):
             # Should not crash; falls through to next strategy
             result = find_bundle_dir(None)
@@ -77,7 +77,7 @@ class TestFindBundleDirFromEnv:
     def test_find_bundle_dir_env_not_set(self):
         """Without env var, should try other strategies."""
         env = os.environ.copy()
-        env.pop("QODER_PATCHS_BUNDLE", None)
+        env.pop("AGENTCLI_PATCHS_BUNDLE", None)
         with mock_patch.dict(os.environ, env, clear=True):
             result = find_bundle_dir(None)
             # Should not crash
@@ -130,6 +130,6 @@ class TestFindBundleDirStrategyPriority:
         config = AppConfig()
         config.paths.bundle_dir = str(config_bundle)
 
-        with mock_patch.dict(os.environ, {"QODER_PATCHS_BUNDLE": str(env_bundle)}):
+        with mock_patch.dict(os.environ, {"AGENTCLI_PATCHS_BUNDLE": str(env_bundle)}):
             result = find_bundle_dir(config)
             assert result == config_bundle

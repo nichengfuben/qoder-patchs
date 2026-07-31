@@ -1,4 +1,4 @@
-"""Tests for qoder_patchs.core.registry module.
+"""Tests for core.registry module.
 
 Covers manual registration, lookup, builtin discovery,
 and name enumeration.
@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from qoder_patchs.core.patch_base import (
+from core.patch_base import (
     PatchBase,
     PatchMetadata,
     PatchResult,
     PatchStatus,
 )
-from qoder_patchs.core.registry import PatchRegistry
+from core.registry import PatchRegistry
 
 
 # ---------------------------------------------------------------------------

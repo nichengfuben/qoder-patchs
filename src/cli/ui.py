@@ -24,12 +24,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from qoder_patchs.cli.charmap import (
+from cli.charmap import (
     BLUE_GRADIENT_PALETTE,
     render_gradient_banner,
     render_text,
 )
-from qoder_patchs.cli.commands.theme import get_console
+from cli.commands.theme import get_console
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +115,7 @@ class BlueCLI:
 
     Args:
         console: An optional pre-configured :class:`~rich.console.Console`.
-            If ``None``, one is created via :func:`~qoder_patchs.cli.theme.get_console`.
+            If ``None``, one is created via :func:`~cli.theme.get_console`.
 
     Example usage::
 
@@ -228,7 +228,7 @@ class BlueCLI:
 
         Args:
             patches: A dict mapping patch names to
-                :class:`~qoder_patchs.core.patch_base.PatchStatus` enums
+                :class:`~core.patch_base.PatchStatus` enums
                 or plain status strings.
         """
         tbl = Table(

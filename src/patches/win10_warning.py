@@ -20,8 +20,8 @@ from typing import Optional
 
 from loguru import logger
 
-from qoder_patchs.core.patch_base import PatchBase, PatchMetadata, PatchResult, PatchStatus
-from qoder_patchs.patches.win10_detect import PATCHED_PATTERN, detect_func_name, do_patch, verify_patch
+from core.patch_base import PatchBase, PatchMetadata, PatchResult, PatchStatus
+from patches.win10_detect import PATCHED_PATTERN, detect_func_name, do_patch, verify_patch
 
 
 class Win10WarningPatch(PatchBase):

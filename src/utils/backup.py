@@ -1,4 +1,4 @@
-"""Backup management for qoder-patchs.
+"""Backup management for agentcli-patchs.
 
 Provides file backup creation, cleanup, and restoration with timestamped
 backup naming. Backups are stored alongside the original files using the

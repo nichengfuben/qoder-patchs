@@ -1,4 +1,4 @@
-"""Cross-platform helper utilities for qoder-patchs.
+"""Cross-platform helper utilities for agentcli-patchs.
 
 Provides Windows-specific path conversion, scheduled task management,
 dependency checking, and safe environment variable access. These helpers
@@ -254,7 +254,7 @@ def remove_scheduled_task(task_name: str) -> bool:
 
 
 def check_dependencies() -> list[tuple[str, bool, str]]:
-    """Check all runtime dependencies required by qoder-patchs.
+    """Check all runtime dependencies required by agentcli-patchs.
 
     Verifies the availability of each dependency on the system ``PATH``
     and returns a list of check results.

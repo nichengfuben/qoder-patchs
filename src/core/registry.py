@@ -3,10 +3,10 @@
 Provides a central registry for all available patches, with two-layer
 auto-discovery:
 
-1. **Built-in patches** -- scanned from the ``qoder_patchs.patches`` package
+1. **Built-in patches** -- scanned from the ``patches`` package
    using :mod:`pkgutil`.
 2. **Third-party patches** -- discovered via ``importlib.metadata`` entry
-   points under the ``qoder_patchs.patches`` group.
+   points under the ``patches`` group.
 
 Classes:
     PatchRegistry: Central patch storage and discovery manager.
@@ -21,9 +21,9 @@ from typing import Optional
 
 from loguru import logger
 
-from qoder_patchs.core.patch_base import PatchBase
+from core.patch_base import PatchBase
 
-# Modules in qoder_patchs.patches that must never be auto-discovered as
+# Modules in patches that must never be auto-discovered as
 # patches, even though their name no longer starts with "_".
 EXCLUDED_DISCOVERY_MODULES = {"templates"}
 
@@ -94,9 +94,9 @@ class PatchRegistry:
         return sorted(self._patches.keys())
 
     def discover_builtin(self) -> None:
-        """Scan the ``qoder_patchs.patches`` package for built-in patches.
+        """Scan the ``patches`` package for built-in patches.
 
-        Iterates over all modules in the ``qoder_patchs.patches`` package,
+        Iterates over all modules in the ``patches`` package,
         skipping modules whose names start with ``_``. For each module,
         any concrete subclass of :class:`PatchBase` is instantiated and
         registered.
@@ -104,13 +104,13 @@ class PatchRegistry:
         Modules that fail to import are logged as warnings and skipped.
         """
         try:
-            package = importlib.import_module("qoder_patchs.patches")
+            package = importlib.import_module("patches")
         except ImportError as exc:
-            logger.warning(f"Cannot import qoder_patchs.patches package: {exc}")
+            logger.warning(f"Cannot import patches package: {exc}")
             return
 
         if not hasattr(package, "__path__"):
-            logger.warning("qoder_patchs.patches has no __path__, skipping builtin discovery")
+            logger.warning("patches has no __path__, skipping builtin discovery")
             return
 
         for _importer, module_name, _ispkg in pkgutil.iter_modules(package.__path__):
@@ -118,7 +118,7 @@ class PatchRegistry:
                 logger.debug(f"Skipping private module: {module_name}")
                 continue
 
-            full_module_name = f"qoder_patchs.patches.{module_name}"
+            full_module_name = f"patches.{module_name}"
             try:
                 module = importlib.import_module(full_module_name)
             except ImportError as exc:
@@ -142,7 +142,7 @@ class PatchRegistry:
 
         logger.info(f"Builtin discovery complete: {len(self._patches)} patches found")
 
-    def discover_entry_points(self, group: str = "qoder_patchs.patches") -> None:
+    def discover_entry_points(self, group: str = "patches") -> None:
         """Discover third-party patches via entry points.
 
         Scans the specified entry point group for external patch classes.
@@ -151,7 +151,7 @@ class PatchRegistry:
 
         Args:
             group: The entry point group name to scan. Defaults to
-                ``"qoder_patchs.patches"``.
+                ``"patches"``.
 
         Entry points that fail to load are logged as warnings and skipped.
         """

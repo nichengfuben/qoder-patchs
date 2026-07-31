@@ -1,4 +1,4 @@
-"""Global pytest fixtures for qoder-patchs tests.
+"""Global pytest fixtures for agentcli-patchs tests.
 
 Provides shared fixtures for mock bundle directories, configuration,
 and pre-patched bundles used across all test modules.
@@ -12,7 +12,7 @@ from unittest.mock import patch as _mock_patch
 
 import pytest
 
-from qoder_patchs.core.config import AppConfig
+from core.config import AppConfig
 
 
 # ---------------------------------------------------------------------------
@@ -27,7 +27,7 @@ from qoder_patchs.core.config import AppConfig
 def _disable_windows_stdout_wrapping():
     """Patch _get_utf8_stdout to return plain sys.stdout (no wrapping)."""
     with _mock_patch(
-        "qoder_patchs.cli.commands.theme._get_utf8_stdout",
+        "cli.commands.theme._get_utf8_stdout",
         return_value=sys.stdout,
     ):
         yield

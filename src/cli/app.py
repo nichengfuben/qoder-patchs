@@ -31,8 +31,8 @@ from typing import Optional
 
 import typer
 
-from qoder_patchs import __version__
-from qoder_patchs.cli.commands.config_cmd import config_app
+from cli import __version__
+from cli.commands.config_cmd import config_app
 
 # ---------------------------------------------------------------------------
 # Application-wide state (initialised by the callback)
@@ -52,7 +52,7 @@ _state: dict = {
 
 def _get_config():
     """Lazily load and return the AppConfig."""
-    from qoder_patchs.core.config import AppConfig, resolve_config_path
+    from core.config import AppConfig, resolve_config_path
 
     if _state["config"] is not None:
         return _state["config"]
@@ -66,7 +66,7 @@ def _get_config():
 
 def _get_registry():
     """Lazily create and return the PatchRegistry."""
-    from qoder_patchs.core.registry import PatchRegistry
+    from core.registry import PatchRegistry
 
     if _state["registry"] is not None:
         return _state["registry"]
@@ -83,8 +83,8 @@ def _get_registry():
 
 def _get_engine():
     """Lazily create and return the PatchEngine."""
-    from qoder_patchs.core.engine import PatchEngine
-    from qoder_patchs.utils.backup import BackupManager
+    from core.engine import PatchEngine
+    from utils.backup import BackupManager
 
     if _state["engine"] is not None:
         return _state["engine"]
@@ -103,7 +103,7 @@ def _get_bundle_dir() -> Optional[Path]:
     if _state["bundle_dir"] is not None:
         return _state["bundle_dir"]
 
-    from qoder_patchs.utils.paths import find_bundle_dir
+    from utils.paths import find_bundle_dir
 
     config = _get_config()
     bundle_dir = find_bundle_dir(config)
@@ -113,7 +113,7 @@ def _get_bundle_dir() -> Optional[Path]:
 
 def _get_cli():
     """Lazily create and return BlueCLI."""
-    from qoder_patchs.cli.ui import BlueCLI
+    from cli.ui import BlueCLI
 
     if _state["cli"] is not None:
         return _state["cli"]
@@ -128,7 +128,7 @@ def _get_cli():
 # ---------------------------------------------------------------------------
 
 typer_app = typer.Typer(
-    name="qoder-patchs",
+    name="agentcli-patchs",
     help="Qoder CLI 补丁管理工具 -- 交互式菜单, 可扩展补丁系统",
     no_args_is_help=False,
     add_completion=True,
@@ -160,7 +160,7 @@ def main_callback(
     _state["config_path"] = config
 
     # Configure logging
-    from qoder_patchs.utils.logging import setup_logging
+    from utils.logging import setup_logging
 
     log_file = None
     try:
@@ -186,14 +186,14 @@ def main_callback(
 
 def _interactive_mode() -> None:
     """Run the interactive menu loop."""
-    from qoder_patchs.cli.interactive import interactive_mode
+    from cli.interactive import interactive_mode
 
     interactive_mode()
 
 
 def _show_about(cli) -> None:
     """Display about information."""
-    from qoder_patchs.cli.interactive import show_about
+    from cli.interactive import show_about
 
     show_about(cli)
 
@@ -231,7 +231,7 @@ def _apply_named(engine, bundle_dir, cli, name: str, dry_run: bool) -> None:
 def _apply_interactive_select(engine, bundle_dir, cli, dry_run: bool) -> None:
     """Prompt the user to select patches, then apply each selection."""
     registry = _get_registry()
-    from qoder_patchs.cli.menu import patch_select_menu
+    from cli.menu import patch_select_menu
 
     patches = registry.get_all()
     if not patches:
@@ -274,7 +274,7 @@ def apply(
     if bundle_dir is None:
         cli.error(
             "未找到 Qoder CLI bundle 目录.\n"
-            "请在配置中设置 paths.bundle_dir 或设置 QODER_PATCHS_BUNDLE 环境变量"
+            "请在配置中设置 paths.bundle_dir 或设置 AGENTCLI_PATCHS_BUNDLE 环境变量"
         )
         raise typer.Exit(code=10)
 

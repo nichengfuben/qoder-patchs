@@ -1,11 +1,11 @@
-"""Configuration management for qoder-patchs.
+"""Configuration management for agentcli-patchs.
 
 Provides Pydantic-based configuration models with TOML persistence.
 Configuration is loaded from TOML files, validated, and can be saved back.
 
 Configuration lookup priority:
     1. CLI --config argument
-    2. QODER_PATCHS_CONFIG environment variable
+    2. AGENTCLI_PATCHS_CONFIG environment variable
     3. Project root config.toml
     4. User config directory (platformdirs)
     5. None (use defaults)
@@ -194,18 +194,18 @@ def _resolve_from_cli_arg(cli_arg: str) -> Path:
 
 
 def _resolve_from_env_var() -> Optional[Path]:
-    """Resolve config path from the ``QODER_PATCHS_CONFIG`` environment variable.
+    """Resolve config path from the ``AGENTCLI_PATCHS_CONFIG`` environment variable.
 
     Returns:
         The resolved ``Path`` to the config file, or ``None`` if not set/found.
     """
-    env_path = os.environ.get("QODER_PATCHS_CONFIG")
+    env_path = os.environ.get("AGENTCLI_PATCHS_CONFIG")
     if env_path:
         p = Path(env_path)
         if p.exists():
             logger.debug(f"Config resolved from env var: {p}")
             return p
-        logger.warning(f"QODER_PATCHS_CONFIG set but file not found: {env_path}")
+        logger.warning(f"AGENTCLI_PATCHS_CONFIG set but file not found: {env_path}")
     return None
 
 
@@ -215,8 +215,8 @@ def _resolve_from_project_root() -> Optional[Path]:
     Returns:
         The resolved ``Path`` to the config file, or ``None`` if not found.
     """
-    # __file__ -> core/config.py -> core -> qoder_patchs -> src -> project root
-    project_root = Path(__file__).resolve().parent.parent.parent.parent
+    # __file__ -> core/config.py -> core -> src -> project root
+    project_root = Path(__file__).resolve().parent.parent.parent
     local_config = project_root / "config.toml"
     if local_config.exists():
         logger.debug(f"Config resolved from project root: {local_config}")
@@ -233,7 +233,7 @@ def _resolve_from_user_config_dir() -> Optional[Path]:
     try:
         from platformdirs import user_config_dir
 
-        user_config = Path(user_config_dir("qoder-patchs", "nichengfuben")) / "config.toml"
+        user_config = Path(user_config_dir("agentcli-patchs", "nichengfuben")) / "config.toml"
         if user_config.exists():
             logger.debug(f"Config resolved from user config dir: {user_config}")
             return user_config
@@ -247,7 +247,7 @@ def resolve_config_path(cli_arg: Optional[str] = None) -> Optional[Path]:
 
     Lookup order:
         1. ``cli_arg`` -- explicit CLI ``--config`` argument
-        2. ``QODER_PATCHS_CONFIG`` environment variable
+        2. ``AGENTCLI_PATCHS_CONFIG`` environment variable
         3. ``config.toml`` in the project root directory
         4. User configuration directory (via ``platformdirs``)
         5. ``None`` -- caller should use defaults
@@ -265,7 +265,7 @@ def resolve_config_path(cli_arg: Optional[str] = None) -> Optional[Path]:
     if cli_arg:
         return _resolve_from_cli_arg(cli_arg)
 
-    # Priority 2: QODER_PATCHS_CONFIG environment variable
+    # Priority 2: AGENTCLI_PATCHS_CONFIG environment variable
     resolved = _resolve_from_env_var()
     if resolved is not None:
         return resolved

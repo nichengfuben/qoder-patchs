@@ -1,23 +1,23 @@
 """Interactive menu mode implementation for the Qoder Patch Manager CLI.
 
 Contains the interactive menu loop and its per-menu-item handlers. Split
-out of :mod:`qoder_patchs.cli.app` to keep that module within the project's
+out of :mod:`cli.app` to keep that module within the project's
 per-file line limit.
 """
 
 from __future__ import annotations
 
-from qoder_patchs import __version__
+from cli import __version__
 
 
 def _show_interactive_banner(cli, config) -> None:
     """Print the startup banner and title block if enabled in config."""
     if not config.ui.show_banner:
         return
-    cli.banner("QODER")
+    cli.banner("AGENTCLI")
     cli.print()
     cli.print(
-        f"  [bold bright_blue]Qoder Patch Manager v{__version__}[/bold bright_blue]"
+        f"  [bold bright_blue]AgentCLI Patchs v{__version__}[/bold bright_blue]"
     )
     cli.divider()
     cli.print()
@@ -29,7 +29,7 @@ def _dispatch_menu_choice(choice: str, cli) -> bool:
     Returns:
         ``True`` if the menu loop should exit.
     """
-    from qoder_patchs.cli.menu import (
+    from cli.menu import (
         MENU_ABOUT,
         MENU_APPLY,
         MENU_CONFIG,
@@ -56,8 +56,8 @@ def _dispatch_menu_choice(choice: str, cli) -> bool:
 
 def interactive_mode() -> None:
     """Run the interactive menu loop."""
-    from qoder_patchs.cli import app
-    from qoder_patchs.cli.menu import main_menu
+    from cli import app
+    from cli.menu import main_menu
 
     cli = app._get_cli()
     config = app._get_config()
@@ -80,8 +80,8 @@ def interactive_mode() -> None:
 
 def _interactive_apply(cli) -> None:
     """Interactive patch application flow."""
-    from qoder_patchs.cli import app
-    from qoder_patchs.cli.menu import patch_select_menu
+    from cli import app
+    from cli.menu import patch_select_menu
 
     registry = app._get_registry()
     engine = app._get_engine()
@@ -117,7 +117,7 @@ def _interactive_apply(cli) -> None:
 
 def _interactive_status(cli) -> None:
     """Interactive status display."""
-    from qoder_patchs.cli import app
+    from cli import app
 
     engine = app._get_engine()
     bundle_dir = app._get_bundle_dir()
@@ -140,9 +140,9 @@ def _interactive_status(cli) -> None:
 
 def _interactive_rollback(cli) -> None:
     """Interactive rollback flow."""
-    from qoder_patchs.cli import app
-    from qoder_patchs.cli.menu import confirm as qconfirm
-    from qoder_patchs.cli.menu import patch_select_menu
+    from cli import app
+    from cli.menu import confirm as qconfirm
+    from cli.menu import patch_select_menu
 
     engine = app._get_engine()
     bundle_dir = app._get_bundle_dir()
@@ -176,8 +176,8 @@ def _interactive_rollback(cli) -> None:
 
 def _interactive_config(cli) -> None:
     """Interactive config editor."""
-    from qoder_patchs.cli import app
-    from qoder_patchs.cli.menu import config_menu
+    from cli import app
+    from cli.menu import config_menu
 
     config = app._get_config()
     result = config_menu(config)
@@ -193,7 +193,7 @@ def _interactive_config(cli) -> None:
         setattr(obj, parts[-1], new_value)
 
         # Save back
-        from qoder_patchs.core.config import resolve_config_path
+        from core.config import resolve_config_path
 
         config_path = resolve_config_path(app._state.get("config_path"))
         if config_path:
@@ -214,7 +214,7 @@ def _interactive_config(cli) -> None:
 def show_about(cli) -> None:
     """Display about information."""
     cli.print()
-    cli.print(f"  [bold bright_blue]Qoder Patch Manager v{__version__}[/bold bright_blue]")
+    cli.print(f"  [bold bright_blue]AgentCLI Patchs v{__version__}[/bold bright_blue]")
     cli.print("  [dim]作者: nichengfuben[/dim]")  # 作者
     cli.print("  [dim]许可证: MIT[/dim]")  # 许可证
     cli.print(

@@ -1,4 +1,4 @@
-"""Tests for qoder_patchs.cli.app module.
+"""Tests for cli.app module.
 
 Smoke tests for CLI commands using Typer's CliRunner.
 
@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from typer.testing import CliRunner
 
-from qoder_patchs.cli.app import typer_app, _state
+from cli.app import typer_app, _state
 
 
 runner = CliRunner()
@@ -34,7 +34,7 @@ class TestHelpCommand:
         result = runner.invoke(typer_app, ["--help"])
         assert result.exit_code == 0
         # Should contain usage information
-        assert "qoder-patchs" in result.output.lower() or "Usage" in result.output or "用法" in result.output
+        assert "agentcli-patchs" in result.output.lower() or "Usage" in result.output or "用法" in result.output
 
 
 class TestAboutCommand:

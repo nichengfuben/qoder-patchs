@@ -18,7 +18,7 @@ from typing import Any, Optional
 
 import questionary
 
-from qoder_patchs.cli.commands.theme import get_questionary_style
+from cli.commands.theme import get_questionary_style
 
 
 # Menu option constants (Chinese labels)
@@ -144,7 +144,7 @@ def _flatten_config_fields(config: Any) -> list[tuple[str, str]]:
     """Flatten config into dot-path key/value pairs.
 
     Args:
-        config: An :class:`~qoder_patchs.core.config.AppConfig` instance.
+        config: An :class:`~core.config.AppConfig` instance.
 
     Returns:
         A list of ``(dot_path, str_value)`` tuples for every field in
@@ -261,7 +261,7 @@ def config_menu(config: Any) -> Optional[tuple[str, Any]]:
     user pick one to edit.  The new value is entered via a text input.
 
     Args:
-        config: An :class:`~qoder_patchs.core.config.AppConfig` instance.
+        config: An :class:`~core.config.AppConfig` instance.
 
     Returns:
         A ``(key, new_value)`` tuple if the user edited a setting, or

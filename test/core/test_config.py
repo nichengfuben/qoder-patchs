@@ -1,4 +1,4 @@
-"""Tests for qoder_patchs.core.config module.
+"""Tests for core.config module.
 
 Covers default values, TOML loading/saving, missing file handling,
 and the _strip_none_values helper.
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from qoder_patchs.core.config import (
+from core.config import (
     AppConfig,
     PatchSettings,
     PathSettings,

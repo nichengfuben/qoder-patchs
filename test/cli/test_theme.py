@@ -1,4 +1,4 @@
-"""Tests for qoder_patchs.cli.theme module.
+"""Tests for cli.theme module.
 
 Covers BluePalette constants, BLUE_THEME existence, and get_console factory.
 """
@@ -9,7 +9,7 @@ import pytest
 from rich.console import Console
 from rich.theme import Theme
 
-from qoder_patchs.cli.commands.theme import (
+from cli.commands.theme import (
     BLUE_THEME,
     BluePalette,
     get_console,

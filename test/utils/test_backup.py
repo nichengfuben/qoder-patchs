@@ -1,4 +1,4 @@
-"""Tests for qoder_patchs.utils.backup module.
+"""Tests for utils.backup module.
 
 Covers backup creation, cleanup of old backups, restoration,
 and backup listing.
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from qoder_patchs.utils.backup import BackupManager
+from utils.backup import BackupManager
 
 
 @pytest.fixture()
