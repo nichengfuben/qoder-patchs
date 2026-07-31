@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from patches.cursor_agent import (
     BOOT_MARKER,
+    DISK_MARKER,
     EPHEMERAL_NULL_MARKER,
     FOOTER_KEEP_MARKER,
     MARKER,
     STATUS_INTERVAL_MARKER,
     _COMPILE_CACHE_NEW,
     _COMPILE_CACHE_OLD,
+    _DISK_BEARER_OVERRIDE,
     _REPLACEMENTS,
     CursorAgentPatch,
     apply_hot_auth_replacements,
@@ -31,6 +33,10 @@ _ORIG_FACTORY = (
     '"darwin"===(0,r.platform)()?new u(e.domain):new a(e.domain)}'
 )
 _ORIG_UX_ZN = "return yield(0,r.Zn)({currentToken:l,ephemeralToken:i,isTokenExpiringSoon:a,"
+_ORIG_EPHEMERAL_R = "ephemeralToken:R,isTokenExpiringSoon:Q,"
+_ORIG_SET_R = "setEphemeralToken:e=>{R=e}"
+_ORIG_BEARER_UX = 'l=yield(0,B.uX)(e,a);null!=l&&s.header.set("authorization",`Bearer ${l}`);'
+_ORIG_BEARER_INLINE = '}(e,a);null!=l&&s.header.set("authorization",`Bearer ${l}`);'
 _ORIG_ZN = (
     "function k(e){return v(this,void 0,void 0,(function*(){"
     "const{currentToken:t,ephemeralToken:n,isTokenExpiringSoon:r,refreshToken:s}=e;"
@@ -74,6 +80,10 @@ _FIXTURE_ORIGINAL = "\n".join(
         _ORIG_PERSIST_EPHEMERAL,
         _ORIG_MEMORY_GET_ACCESS,
         _ORIG_KEYCHAIN_GET_ALL,
+        _ORIG_EPHEMERAL_R,
+        _ORIG_SET_R,
+        _ORIG_BEARER_UX,
+        _ORIG_BEARER_INLINE,
     ]
 )
 
@@ -100,7 +110,7 @@ def test_metadata_includes_statusline_and_slash() -> None:
     assert "auto" in p.metadata.tags
     assert "statusline" in p.metadata.tags
     assert "slash" in p.metadata.tags
-    assert p.metadata.version >= "2.3.0"
+    assert p.metadata.version >= "2.3.1"
 
 
 def test_find_client_config() -> None:
@@ -115,6 +125,10 @@ def test_apply_hot_auth_on_original_snippets() -> None:
     assert hits >= 8
     assert MARKER in out
     assert EPHEMERAL_NULL_MARKER in out
+    assert DISK_MARKER in out
+    assert _DISK_BEARER_OVERRIDE in out
+    assert "ephemeralToken:R," not in out
+    assert "setEphemeralToken:e=>{R=e}" not in out
     assert "if(this.cachedAccessToken)return this.cachedAccessToken" not in out
     assert "ephemeralToken:i," not in out
     assert "function A(e){/*agentcli-hot-auth*/return new a(e.domain)}" in out
@@ -175,4 +189,6 @@ def test_live_bundle_originals_match_or_already_patched() -> None:
     patched, hits = apply_hot_auth_replacements(text)
     assert hits >= 1
     assert EPHEMERAL_NULL_MARKER in patched
+    assert DISK_MARKER in patched
     assert "ephemeralToken:i," not in patched
+    assert "ephemeralToken:R," not in patched

@@ -25,6 +25,7 @@ from sc.paths import config_json_path, find_cursor_agent_bundle, find_cursor_age
 from utils.paths import get_project_root
 
 MARKER = "/*agentcli-hot-auth*/"
+DISK_MARKER = "/*agentcli-hot-auth-disk*/"
 SLASH_MARKER = "/*agentcli-sc-slash*/"
 BOOT_MARKER = "REM agentcli-sc-auto-boot"
 STATUS_INTERVAL_MARKER = "/*agentcli-status-interval*/"
@@ -131,6 +132,18 @@ _SLASH_INJECT = (
     + _SLASH_ANCHOR
 )
 
+# 每次 Authorization 写入前强制 fs.readFileSync(auth.json) 覆盖 token
+_DISK_BEARER_OVERRIDE = (
+    '{/*agentcli-hot-auth-disk*/try{const _fs=require("node:fs"),_path=require("node:path"),'
+    '_os=require("node:os");const _dir="win32"===process.platform?_path.join('
+    'process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor")'
+    ':_path.join(_os.homedir(),".cursor");const _auth=_path.join(_dir,"auth.json");'
+    'const _j=JSON.parse(_fs.readFileSync(_auth,"utf8"));if(_j&&_j.accessToken)l=_j.accessToken;'
+    'try{const _sub=JSON.parse(Buffer.from(String(l).split(".")[1],"base64").toString()).sub;'
+    '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),'
+    'JSON.stringify({sub:_sub,ts:Date.now(),pid:process.pid}))}catch(_e){}}catch(_e){}}'
+)
+
 # 原始短路缓存 → 强制每次读盘 / 读 secret；工厂一律 file AuthStorage（忽略 memory/keychain）
 # 另：auth-refresh ephemeral / Zn 回落 / keychain getAll 短路 一并掐断。
 _REPLACEMENTS: tuple[tuple[str, str], ...] = (
@@ -213,6 +226,28 @@ _REPLACEMENTS: tuple[tuple[str, str], ...] = (
     (
         "function I(e){return v(this,void 0,void 0,(function*(){const{accessToken:t,persist:n,setEphemeralToken:r}=e;r(t),yield n()}))}",
         "function I(e){return v(this,void 0,void 0,(function*(){const{accessToken:t,persist:n,setEphemeralToken:r}=e;/*agentcli-hot-auth*/r(null),yield n()}))}",
+    ),
+    # 第二套内联 auth（agent 主链路）：ephemeralToken:R —— 此前只补了 auth-refresh 的 i
+    (
+        "ephemeralToken:R,isTokenExpiringSoon:Q,",
+        "ephemeralToken:null/*agentcli-hot-auth*/,isTokenExpiringSoon:Q,",
+    ),
+    (
+        "setEphemeralToken:e=>{R=e}",
+        "setEphemeralToken:e=>{/*agentcli-hot-auth*/R=null}",
+    ),
+    # 核弹：每次设 Bearer 前同步读盘覆盖 l，并写入 agentcli-last-bearer.json 供对照
+    (
+        'l=yield(0,B.uX)(e,a);null!=l&&s.header.set("authorization",`Bearer ${l}`);',
+        'l=yield(0,B.uX)(e,a);'
+        + _DISK_BEARER_OVERRIDE
+        + 'null!=l&&s.header.set("authorization",`Bearer ${l}`);',
+    ),
+    (
+        '}(e,a);null!=l&&s.header.set("authorization",`Bearer ${l}`);',
+        '}(e,a);'
+        + _DISK_BEARER_OVERRIDE
+        + 'null!=l&&s.header.set("authorization",`Bearer ${l}`);',
     ),
 )
 
@@ -393,7 +428,7 @@ class CursorAgentPatch(PatchBase):
                 "AuthStorage/keychain/ephemeral 全部强制读盘；禁用 NODE_COMPILE_CACHE；"
                 "启动 agent 时自动后台 sc auto；注入 /sc pull|usage；statusline 定时刷新。"
             ),
-            version="2.3.0",
+            version="2.3.1",
             author="nichengfuben",
             target_files=(
                 "index.js",
@@ -449,7 +484,7 @@ class CursorAgentPatch(PatchBase):
         text = index.read_text(encoding="utf-8", errors="ignore")
         root = find_cursor_agent_root()
         sc_ok = bool(root and (root / "sc.cmd").exists() and (root / "sc-statusline.cmd").exists())
-        hot_ok = MARKER in text and EPHEMERAL_NULL_MARKER in text
+        hot_ok = MARKER in text and EPHEMERAL_NULL_MARKER in text and DISK_MARKER in text
         interval_ok = any(
             STATUS_INTERVAL_MARKER in p.read_text(encoding="utf-8", errors="ignore")
             for p in target.glob("*.index.js")

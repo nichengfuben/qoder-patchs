@@ -2,6 +2,10 @@
 
 本文件记录 AgentCLI Patchs 的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.3.1
+
+- **hot-auth disk Bearer**：agent 主链路另有内联 `ephemeralToken:R`；每次设 `Authorization` 前 `readFileSync(auth.json)` 强制覆盖，并写 `agentcli-last-bearer.json` 对照 `sub`
+
 ## 2.3.0
 
 - **hot-auth v2**：掐断 `auth-refresh` ephemeral / apiKeyOverride；Zn 不再回落内存 token；memory store getter 兜底为空；keychain `getAllCredentials` 去短路
