@@ -1,14 +1,20 @@
 from __future__ import annotations
 
-"""Cursor Agent / IDE auth.json 与同级 config.json 路径。"""
+"""Cursor Agent auth 路径与 SC 数据目录（~/.cursor）。"""
 
 import os
 import platform
+import shutil
 from pathlib import Path
 
 
-def cursor_config_dir() -> Path:
-    """与 cursor-agent ``getAuthFilePath('Cursor')`` 同级目录。"""
+def sc_home_dir() -> Path:
+    """SC 配置与运行时状态：``~/.cursor``（与 cli-config / instances 同目录）。"""
+    return Path.home() / ".cursor"
+
+
+def cursor_auth_dir() -> Path:
+    """cursor-agent ``auth.json`` 所在目录（平台相关，勿与 SC 配置混放）。"""
     system = platform.system()
     if system == "Windows":
         appdata = os.environ.get("APPDATA") or str(
@@ -16,19 +22,49 @@ def cursor_config_dir() -> Path:
         )
         return Path(appdata) / "Cursor"
     if system == "Darwin":
-        # cursor-agent: join(homedir(), `.${product}`, "auth.json") → ~/.cursor
         return Path.home() / ".cursor"
     xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
     return Path(xdg) / "cursor"
 
 
+def cursor_config_dir() -> Path:
+    """兼容旧名：等同 ``cursor_auth_dir``（仅 auth / bearer）。"""
+    return cursor_auth_dir()
+
+
 def auth_json_path() -> Path:
-    return cursor_config_dir() / "auth.json"
+    return cursor_auth_dir() / "auth.json"
 
 
 def config_json_path() -> Path:
-    """便携 SC 配置：与 auth.json 同级，不放在执行目录。"""
-    return cursor_config_dir() / "config.json"
+    """SC ``config.json``：始终在 ``~/.cursor``。"""
+    return sc_home_dir() / "config.json"
+
+
+_LEGACY_SC_NAMES = (
+    "config.json",
+    "sc_status.json",
+    "sc_auto.pid",
+    "sc_auto.log",
+)
+
+
+def migrate_legacy_sc_home() -> None:
+    """若 ``~/.cursor`` 缺文件而 auth 目录仍有旧 SC 文件，则复制过去（不删源）。"""
+    home = sc_home_dir()
+    home.mkdir(parents=True, exist_ok=True)
+    legacy = cursor_auth_dir()
+    if legacy.resolve() == home.resolve():
+        return
+    for name in _LEGACY_SC_NAMES:
+        dst = home / name
+        src = legacy / name
+        if dst.exists() or not src.is_file():
+            continue
+        try:
+            shutil.copy2(src, dst)
+        except Exception:
+            pass
 
 
 def find_cursor_agent_root() -> Path | None:

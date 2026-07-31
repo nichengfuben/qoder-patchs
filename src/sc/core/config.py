@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""SC 配置 I/O（config.json 与 auth.json 同级）。
+"""SC 配置 I/O（``~/.cursor/config.json``）。
 
 ``base_url`` / ``api_keys`` 等仅来自本机 ``config.json``，代码内不写死服务地址或密钥。
 """
@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
-from sc.core.paths import config_json_path, cursor_config_dir
+from sc.core.paths import config_json_path, migrate_legacy_sc_home, sc_home_dir
 
 # 非敏感运行默认值；base_url / api_keys 必须由用户 config.json 提供
 DEFAULT_CONFIG: Dict[str, Any] = {
@@ -27,6 +27,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 
 
 def load_config() -> Dict[str, Any]:
+    migrate_legacy_sc_home()
     path = config_json_path()
     if not path.exists():
         cfg = dict(DEFAULT_CONFIG)
@@ -41,6 +42,6 @@ def load_config() -> Dict[str, Any]:
 
 def save_config(cfg: Dict[str, Any]) -> Path:
     path = config_json_path()
-    cursor_config_dir().mkdir(parents=True, exist_ok=True)
+    sc_home_dir().mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     return path

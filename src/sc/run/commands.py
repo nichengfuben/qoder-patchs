@@ -8,7 +8,7 @@ from pathlib import Path
 
 from sc.core import api, auth
 from sc.core.config import load_config, save_config
-from sc.core.paths import auth_json_path, config_json_path, cursor_config_dir
+from sc.core.paths import auth_json_path, config_json_path, cursor_auth_dir
 from sc.run import instances as inst
 from sc.run.pull import (
     make_pool,
@@ -111,7 +111,7 @@ def cmd_doctor() -> int:
     if not sub:
         print("FAIL: auth.json 无可用 accessToken")
         ok = False
-    bearer_path = cursor_config_dir() / "agentcli-last-bearer.json"
+    bearer_path = cursor_auth_dir() / "agentcli-last-bearer.json"
     print(f"bearer: {bearer_path}")
     ok = _doctor_bearer(bearer_path, sub) and ok
     ok = _doctor_ps1(ok)

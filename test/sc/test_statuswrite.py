@@ -9,7 +9,8 @@ from sc.run import status_store
 
 
 def test_write_status_concurrent_no_raise(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(status_store, "cursor_config_dir", lambda: tmp_path)
+    monkeypatch.setattr(status_store, "sc_home_dir", lambda: tmp_path)
+    monkeypatch.setattr(status_store, "migrate_legacy_sc_home", lambda: None)
     errors: list[BaseException] = []
 
     def worker(i: int) -> None:

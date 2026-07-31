@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 
+from sc.core.paths import sc_home_dir
+
+
 INSTANCES_FILE = "sc_instances.json"
 LOCK_FILE = "sc_instances.lock"
 STALE_SEC = 10.0
@@ -31,7 +34,7 @@ def _is_stale(ts: float, *, now: Optional[float] = None) -> bool:
 
 
 def home_cursor_dir() -> Path:
-    return Path.home() / ".cursor"
+    return sc_home_dir()
 
 
 def instances_json_path() -> Path:

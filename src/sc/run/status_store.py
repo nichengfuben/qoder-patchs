@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""sc 实时状态：写入与 auth 同级的 ``sc_status.json``，供 statusline / ``sc status`` 读取。"""
+"""sc 实时状态：写入 ``~/.cursor/sc_status.json``，供 statusline / ``sc status`` 读取。"""
 
 import json
 import os
@@ -9,13 +9,14 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from sc.core.paths import cursor_config_dir
+from sc.core.paths import migrate_legacy_sc_home, sc_home_dir
 
 STATUS_FILE = "sc_status.json"
 
 
 def status_json_path():
-    return cursor_config_dir() / STATUS_FILE
+    migrate_legacy_sc_home()
+    return sc_home_dir() / STATUS_FILE
 
 
 def read_status() -> Dict[str, Any]:
@@ -73,7 +74,7 @@ def write_status(**fields: Any) -> None:
         "email",
     }
     try:
-        cursor_config_dir().mkdir(parents=True, exist_ok=True)
+        sc_home_dir().mkdir(parents=True, exist_ok=True)
         cur = read_status()
         for k, v in fields.items():
             if v is None:
@@ -101,7 +102,7 @@ _STALE_AFTER_SEC = 20.0
 
 
 def _read_instances_doc() -> Dict[str, Any]:
-    path = Path.home() / ".cursor" / _INSTANCES
+    path = sc_home_dir() / _INSTANCES
     if not path.exists():
         return {}
     try:

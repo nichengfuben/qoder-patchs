@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from sc.core.paths import cursor_config_dir
+from sc.core.paths import migrate_legacy_sc_home, sc_home_dir
 from sc.core.encoding import utf8_env
 from sc.run import instances as inst
 from sc.run.status_store import set_action, write_status
@@ -18,7 +18,8 @@ PID_FILE = "sc_auto.pid"
 
 
 def pid_path() -> Path:
-    return cursor_config_dir() / PID_FILE
+    migrate_legacy_sc_home()
+    return sc_home_dir() / PID_FILE
 
 
 def pid_alive(pid: int) -> bool:
@@ -40,7 +41,7 @@ def read_auto_pid() -> Optional[int]:
 
 
 def write_pid() -> None:
-    cursor_config_dir().mkdir(parents=True, exist_ok=True)
+    sc_home_dir().mkdir(parents=True, exist_ok=True)
     pid_path().write_text(str(os.getpid()), encoding="utf-8")
 
 
@@ -94,7 +95,7 @@ def _spawn_background_auto(parent_pid: Optional[int]) -> int:
 
     creation = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
     creation |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
-    log_path = cursor_config_dir() / "sc_auto.log"
+    log_path = sc_home_dir() / "sc_auto.log"
     log_f = open(log_path, "a", encoding="utf-8")  # noqa: SIM115
     args = [sys.executable, "-X", "utf8", "-m", "sc", "auto", "--fg"]
     if parent_pid:

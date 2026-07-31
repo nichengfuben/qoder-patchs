@@ -2,6 +2,11 @@
 
 本文件记录 Patcher（原 AgentCLI Patchs）的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.4.4
+
+- **SC 配置目录**：`config.json` / `sc_status.json` / `sc_auto.*` 迁至 `~/.cursor`（与 `cli-config`、`sc_instances` 同目录）；`auth.json` 仍在平台 auth 目录（Windows：`%APPDATA%\Cursor`）
+- 启动时若新路径缺失且旧 auth 目录仍有 SC 文件，自动复制（不删源）
+
 ## 2.4.3
 
 - achecker：`encoding` 迁入 `sc.core`；`format_status_lines` 迁入 `statusline_fast`，压缩 `status_store` 行数并满足 `src/sc` 子项上限

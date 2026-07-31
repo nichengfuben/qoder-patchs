@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from sc.core.paths import auth_json_path, cursor_config_dir
+from sc.core.paths import auth_json_path, cursor_auth_dir
 
 
 def read_auth() -> Optional[Dict[str, Any]]:
@@ -27,7 +27,7 @@ def _build_auth_payload(
 ) -> tuple[Optional[str], Path]:
     path = auth_json_path()
     try:
-        cursor_config_dir().mkdir(parents=True, exist_ok=True)
+        cursor_auth_dir().mkdir(parents=True, exist_ok=True)
         data: Dict[str, Any] = {}
         if path.exists():
             try:

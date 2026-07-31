@@ -68,15 +68,15 @@ python main.py rollback cursor-agent
   - 请求时写 `%APPDATA%\Cursor\agentcli-last-bearer.json` 便于对照
   - 禁用 `cursor-agent.ps1` 的 `NODE_COMPILE_CACHE`
 - **statusLine**：leader auto 写 `sc_instances.json`；任意实例只读刷新用量/`#`
-- **配置**：只读 `%APPDATA%\Cursor\config.json`（不硬编码）。可选 `PATCHER_SC_CONFIG_SRC` / `AGENTCLI_SC_CONFIG_SRC` 播种
+- **配置**：只读 `~/.cursor/config.json`（不硬编码）。可选 `PATCHER_SC_CONFIG_SRC` / `AGENTCLI_SC_CONFIG_SRC` 播种
 
 应用后**必须完全退出并重启** `ag`。换号后对照：
 `sc status` 的 `token … sub=` ≡ `agentcli-last-bearer.json` 的 `sub`。
 
 ### 配置与状态
 
-`config.json` / `auth.json` / `sc_status.json`：`%APPDATA%\Cursor\`  
-实例心跳：`%USERPROFILE%\.cursor\sc_instances.json`
+`auth.json`：Windows `%APPDATA%\Cursor\`；macOS/Linux 见平台 auth 目录  
+`config.json` / `sc_status.json` / `sc_auto.*` / 实例心跳：`%USERPROFILE%\.cursor\`（即 `~/.cursor`）
 
 ```bash
 sc status          # 配置 / 在线实例 / 用量 / leader
