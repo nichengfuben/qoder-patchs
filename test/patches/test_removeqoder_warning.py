@@ -1,7 +1,6 @@
-"""Tests for patches.win10_warning module.
+"""Tests for patches.removeqoder_warning module.
 
-This is the MOST IMPORTANT test file. It covers the complete lifecycle
-of the Windows 10 warning suppression patch:
+Covers the complete lifecycle of the Qoder Win10 warning removal patch:
 - Function name detection (standard and fallback)
 - Status checking (applied / not applied)
 - Apply (normal, dry run, already patched)
@@ -25,13 +24,13 @@ from patches.win10_detect import (
     PATCHED_PATTERN,
     detect_func_name,
 )
-from patches.win10_warning import Win10WarningPatch
+from patches.removeqoder_warning import RemoveQoderWarningPatch
 
 
 @pytest.fixture()
 def patch_instance():
-    """Return a fresh Win10WarningPatch instance."""
-    return Win10WarningPatch()
+    """Return a fresh RemoveQoderWarningPatch instance."""
+    return RemoveQoderWarningPatch()
 
 
 # ---------------------------------------------------------------------------

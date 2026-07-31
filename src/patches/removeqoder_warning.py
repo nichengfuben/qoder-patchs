@@ -1,4 +1,4 @@
-"""Windows 10 warning suppression patch.
+"""Remove Qoder Windows 10 startup warning.
 
 Replaces the ``isWindows10()`` function in Qoder CLI bundle files so that it
 always returns ``false``, eliminating the "Windows 10 detected" startup warning.
@@ -24,18 +24,17 @@ from core.patch_base import PatchBase, PatchMetadata, PatchResult, PatchStatus
 from patches.win10_detect import PATCHED_PATTERN, detect_func_name, do_patch, verify_patch
 
 
-class Win10WarningPatch(PatchBase):
-    """Patch that suppresses the Windows 10 detection warning in Qoder CLI.
+class RemoveQoderWarningPatch(PatchBase):
+    """Remove Qoder CLI's Windows 10 detection warning.
 
-    The patch works by replacing the body of the obfuscated ``isWindows10()``
-    function with ``return!1`` (equivalent to ``return false``).  Two target
-    files are patched:
+    Replaces the body of the obfuscated ``isWindows10()`` function with
+    ``return!1`` (``return false``). Two target files are patched:
 
     * ``qodercli.js`` -- main CLI entry point
     * ``qoder-worker-runtime.mjs`` -- worker runtime
 
-    The function name is detected dynamically via two strategies (export
-    mapping and fallback call-chain analysis).
+    The function name is detected dynamically via export mapping or
+    call-chain fallback analysis.
     """
 
     # ------------------------------------------------------------------
@@ -46,19 +45,19 @@ class Win10WarningPatch(PatchBase):
     def metadata(self) -> PatchMetadata:
         """Return patch metadata descriptor."""
         return PatchMetadata(
-            name="win10-warning",
-            display_name="Windows 10 警告抑制",
+            name="remove-qoder-warning",
+            display_name="移除 Qoder Win10 警告",
             description=(
-                "将 isWindows10() 函数替换为始终返回 false, "
-                "消除 Qoder CLI 启动时的 Windows 10 检测警告. "
-                "同时补丁 qodercli.js (主入口) 和 qoder-worker-runtime.mjs (Worker)."
+                "将 isWindows10() 替换为始终返回 false，"
+                "移除 Qoder CLI 启动时的 Windows 10 检测警告。"
+                "同时补丁 qodercli.js 与 qoder-worker-runtime.mjs。"
             ),
-            version="2.0.0",
+            version="2.1.0",
             author="nichengfuben",
             target_files=("qodercli.js", "qoder-worker-runtime.mjs"),
             min_cli_version=None,
             max_cli_version=None,
-            tags=("warning", "windows10", "cosmetic"),
+            tags=("warning", "qoder", "windows10", "cosmetic"),
             reversible=True,
         )
 

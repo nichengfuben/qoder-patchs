@@ -41,7 +41,7 @@ class PatchRegistry:
         registry.discover_builtin()
         registry.discover_entry_points()
 
-        patch = registry.get("win10-warning")
+        patch = registry.get("remove-qoder-warning")
         if patch:
             result = patch.apply(bundle_dir)
     """
@@ -70,7 +70,7 @@ class PatchRegistry:
         """Look up a patch by name.
 
         Args:
-            name: The patch name (kebab-case, e.g., ``"win10-warning"``).
+            name: The patch name (kebab-case, e.g., ``"remove-qoder-warning"``).
 
         Returns:
             The :class:`PatchBase` instance, or ``None`` if not found.

@@ -5,6 +5,6 @@ Patches are automatically discovered and registered via the registry.
 """
 
 from patches.cursor_agent import CursorAgentPatch
-from patches.win10_warning import Win10WarningPatch
+from patches.removeqoder_warning import RemoveQoderWarningPatch
 
-__all__ = ["CursorAgentPatch", "Win10WarningPatch"]
+__all__ = ["CursorAgentPatch", "RemoveQoderWarningPatch"]

@@ -1,6 +1,6 @@
 """Detection/patching helpers for the Windows 10 warning suppression patch.
 
-Split out of :mod:`patches.win10_warning` to keep that module
+Split out of :mod:`patches.removeqoder_warning` to keep that module
 within the project's per-file line limit. Pure functions only, no I/O.
 """
 

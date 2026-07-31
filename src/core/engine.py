@@ -39,7 +39,7 @@ class PatchEngine:
     Example usage::
 
         engine = PatchEngine(registry, backup_manager, config)
-        result = engine.apply("win10-warning", bundle_dir, dry_run=True)
+        result = engine.apply("remove-qoder-warning", bundle_dir, dry_run=True)
         if result.success:
             print("Patch applied successfully!")
     """
@@ -87,7 +87,7 @@ class PatchEngine:
             5. Execute the patch's :meth:`~PatchBase.apply` method.
 
         Args:
-            name: Patch name (kebab-case, e.g., ``"win10-warning"``).
+            name: Patch name (kebab-case, e.g., ``"remove-qoder-warning"``).
             bundle_dir: Path to the Qoder CLI bundle directory.
             dry_run: If ``True``, simulate without modifying files.
 

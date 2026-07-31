@@ -132,55 +132,156 @@ _SLASH_INJECT = (
     + _SLASH_ANCHOR
 )
 
-# 每次 Authorization 写入前强制 fs.readFileSync(auth.json) 覆盖 token
+# 每次 Authorization 写入前强制读盘；优先 process.getBuiltinModule（webpack 内 require 可能不可用）
 _DISK_BEARER_OVERRIDE = (
-    '{/*agentcli-hot-auth-disk*/try{const _fs=require("node:fs"),_path=require("node:path"),'
-    '_os=require("node:os");const _dir="win32"===process.platform?_path.join('
+    '{/*agentcli-hot-auth-disk*/try{const _fs=(process.getBuiltinModule&&'
+    '(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||'
+    'require("node:fs");const _path=(process.getBuiltinModule&&'
+    '(process.getBuiltinModule("node:path")||process.getBuiltinModule("path")))||'
+    'require("node:path");const _os=(process.getBuiltinModule&&'
+    '(process.getBuiltinModule("node:os")||process.getBuiltinModule("os")))||'
+    'require("node:os");const _dir="win32"===process.platform?_path.join('
     'process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor")'
     ':_path.join(_os.homedir(),".cursor");const _auth=_path.join(_dir,"auth.json");'
     'const _j=JSON.parse(_fs.readFileSync(_auth,"utf8"));if(_j&&_j.accessToken)l=_j.accessToken;'
     'try{const _sub=JSON.parse(Buffer.from(String(l).split(".")[1],"base64").toString()).sub;'
     '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),'
-    'JSON.stringify({sub:_sub,ts:Date.now(),pid:process.pid}))}catch(_e){}}catch(_e){}}'
+    'JSON.stringify({sub:_sub,ts:Date.now(),pid:process.pid,via:"disk-override"}))}'
+    'catch(_e){}}catch(_e){}}'
 )
 
-# 原始短路缓存 → 强制每次读盘 / 读 secret；工厂一律 file AuthStorage（忽略 memory/keychain）
-# 另：auth-refresh ephemeral / Zn 回落 / keychain getAll 短路 一并掐断。
+# AuthStorage：每次强制 readAuthData，不写 cached*；并落盘 last-bearer 对照
+_GET_ACCESS_HOT = (
+    "getAccessToken(){return o(this,void 0,void 0,(function*(){var e;"
+    "/*agentcli-hot-auth*/const t=yield this.readAuthData();"
+    "return(null==t?void 0:t.accessToken)?(this.cachedAccessToken=t.accessToken,"
+    "this.cachedRefreshToken=null!==(e=t.refreshToken)&&void 0!==e?e:null,t.accessToken)"
+    ":(this.cachedAccessToken=null,void 0)}))}"
+)
+_GET_ACCESS_HOT_TRACE = (
+    "getAccessToken(){return o(this,void 0,void 0,(function*(){var e;"
+    "/*agentcli-hot-auth*/const t=yield this.readAuthData();"
+    "if(!(null==t?void 0:t.accessToken))return this.cachedAccessToken=null,void 0;"
+    "this.cachedAccessToken=t.accessToken,"
+    "this.cachedRefreshToken=null!==(e=t.refreshToken)&&void 0!==e?e:null;"
+    'try{const n=JSON.parse(Buffer.from(String(t.accessToken).split(".")[1],"base64").toString()).sub;'
+    's.writeFileSync(this.authFilePath.replace(/auth\\.json$/i,"agentcli-last-bearer.json"),'
+    'JSON.stringify({sub:n,ts:Date.now(),pid:process.pid,via:"getAccessToken"}))}catch(e){}'
+    "return t.accessToken}))}"
+)
+# 无缓存版：读盘返回，不赋值 cachedAccessToken / cachedRefreshToken
+_GET_ACCESS_NOCACHE = (
+    "getAccessToken(){return o(this,void 0,void 0,(function*(){"
+    "/*agentcli-hot-auth*/const t=yield this.readAuthData();"
+    "if(!(null==t?void 0:t.accessToken))return void 0;"
+    'try{const n=JSON.parse(Buffer.from(String(t.accessToken).split(".")[1],"base64").toString()).sub;'
+    's.writeFileSync(this.authFilePath.replace(/auth\\.json$/i,"agentcli-last-bearer.json"),'
+    'JSON.stringify({sub:n,ts:Date.now(),pid:process.pid,via:"getAccessToken"}))}catch(e){}'
+    "return t.accessToken}))}"
+)
+_GET_REFRESH_NOCACHE = (
+    "getRefreshToken(){return o(this,void 0,void 0,(function*(){"
+    "/*agentcli-hot-auth*/const t=yield this.readAuthData();"
+    "return(null==t?void 0:t.refreshToken)||void 0}))}"
+)
+_GET_APIKEY_NOCACHE = (
+    "getApiKey(){return o(this,void 0,void 0,(function*(){"
+    "/*agentcli-hot-auth*/const e=yield this.readAuthData();"
+    "return(null==e?void 0:e.apiKey)||void 0}))}"
+)
+_GET_ALL_NOCACHE = (
+    "getAllCredentials(){return o(this,void 0,void 0,(function*(){"
+    "/*agentcli-hot-auth*/const e=yield this.readAuthData();"
+    "return e?{accessToken:e.accessToken||void 0,refreshToken:e.refreshToken||void 0,"
+    "apiKey:e.apiKey||void 0}:{accessToken:void 0,refreshToken:void 0,apiKey:void 0}}))}"
+)
+
+# 原始短路缓存 → 强制每次读盘；工厂一律 file AuthStorage；不写 cached*
+# 另：auth-refresh ephemeral / Zn 回落 / keychain / memory 一并掐断。
 _REPLACEMENTS: tuple[tuple[str, str], ...] = (
     (
         "getAccessToken(){return o(this,void 0,void 0,(function*(){var e;if(this.cachedAccessToken)return this.cachedAccessToken;const t=yield this.readAuthData();return(null==t?void 0:t.accessToken)?(this.cachedAccessToken=t.accessToken,this.cachedRefreshToken=null!==(e=t.refreshToken)&&void 0!==e?e:null,t.accessToken):void 0}))}",
-        "getAccessToken(){return o(this,void 0,void 0,(function*(){var e;/*agentcli-hot-auth*/const t=yield this.readAuthData();return(null==t?void 0:t.accessToken)?(this.cachedAccessToken=t.accessToken,this.cachedRefreshToken=null!==(e=t.refreshToken)&&void 0!==e?e:null,t.accessToken):(this.cachedAccessToken=null,void 0)}))}",
+        _GET_ACCESS_NOCACHE,
+    ),
+    # 升级：已打 hot-auth（含写 cache / last-bearer）→ 无缓存
+    (
+        _GET_ACCESS_HOT,
+        _GET_ACCESS_NOCACHE,
+    ),
+    (
+        _GET_ACCESS_HOT_TRACE,
+        _GET_ACCESS_NOCACHE,
+    ),
+    # 升级旧版 disk-override（裸 require）→ getBuiltinModule
+    (
+        '{/*agentcli-hot-auth-disk*/try{const _fs=require("node:fs"),_path=require("node:path"),'
+        '_os=require("node:os");const _dir="win32"===process.platform?_path.join('
+        'process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor")'
+        ':_path.join(_os.homedir(),".cursor");const _auth=_path.join(_dir,"auth.json");'
+        'const _j=JSON.parse(_fs.readFileSync(_auth,"utf8"));if(_j&&_j.accessToken)l=_j.accessToken;'
+        'try{const _sub=JSON.parse(Buffer.from(String(l).split(".")[1],"base64").toString()).sub;'
+        '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),'
+        "JSON.stringify({sub:_sub,ts:Date.now(),pid:process.pid}))}catch(_e){}}catch(_e){}}",
+        _DISK_BEARER_OVERRIDE,
     ),
     (
         "getRefreshToken(){return o(this,void 0,void 0,(function*(){var e;if(this.cachedRefreshToken)return this.cachedRefreshToken;const t=yield this.readAuthData();return(null==t?void 0:t.refreshToken)?(this.cachedAccessToken=null!==(e=t.accessToken)&&void 0!==e?e:null,this.cachedRefreshToken=t.refreshToken,t.refreshToken):void 0}))}",
+        _GET_REFRESH_NOCACHE,
+    ),
+    (
         "getRefreshToken(){return o(this,void 0,void 0,(function*(){var e;/*agentcli-hot-auth*/const t=yield this.readAuthData();return(null==t?void 0:t.refreshToken)?(this.cachedAccessToken=null!==(e=t.accessToken)&&void 0!==e?e:null,this.cachedRefreshToken=t.refreshToken,t.refreshToken):(this.cachedRefreshToken=null,void 0)}))}",
+        _GET_REFRESH_NOCACHE,
     ),
     (
         "getApiKey(){return o(this,void 0,void 0,(function*(){if(this.cachedApiKey)return this.cachedApiKey;const e=yield this.readAuthData();return(null==e?void 0:e.apiKey)?(this.cachedApiKey=e.apiKey,e.apiKey):void 0}))}",
+        _GET_APIKEY_NOCACHE,
+    ),
+    (
         "getApiKey(){return o(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const e=yield this.readAuthData();return(null==e?void 0:e.apiKey)?(this.cachedApiKey=e.apiKey,e.apiKey):(this.cachedApiKey=null,void 0)}))}",
+        _GET_APIKEY_NOCACHE,
     ),
     (
         "getAllCredentials(){return o(this,void 0,void 0,(function*(){if(null!==this.cachedAccessToken&&null!==this.cachedRefreshToken)return{accessToken:this.cachedAccessToken||void 0,refreshToken:this.cachedRefreshToken||void 0,apiKey:this.cachedApiKey||void 0};const e=yield this.readAuthData();return e?(this.cachedAccessToken=e.accessToken||null,this.cachedRefreshToken=e.refreshToken||null,this.cachedApiKey=e.apiKey||null,{accessToken:e.accessToken||void 0,refreshToken:e.refreshToken||void 0,apiKey:e.apiKey||void 0}):{accessToken:void 0,refreshToken:void 0,apiKey:void 0}}))}",
-        "getAllCredentials(){return o(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const e=yield this.readAuthData();return e?(this.cachedAccessToken=e.accessToken||null,this.cachedRefreshToken=e.refreshToken||null,this.cachedApiKey=e.apiKey||null,{accessToken:e.accessToken||void 0,refreshToken:e.refreshToken||void 0,apiKey:e.apiKey||void 0}):(this.cachedAccessToken=null,this.cachedRefreshToken=null,this.cachedApiKey=null,{accessToken:void 0,refreshToken:void 0,apiKey:void 0})}))}",
+        _GET_ALL_NOCACHE,
     ),
-    # secret/keychain store：去掉内存短路
+    (
+        "getAllCredentials(){return o(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const e=yield this.readAuthData();return e?(this.cachedAccessToken=e.accessToken||null,this.cachedRefreshToken=e.refreshToken||null,this.cachedApiKey=e.apiKey||null,{accessToken:e.accessToken||void 0,refreshToken:e.refreshToken||void 0,apiKey:e.apiKey||void 0}):(this.cachedAccessToken=null,this.cachedRefreshToken=null,this.cachedApiKey=null,{accessToken:void 0,refreshToken:void 0,apiKey:void 0})}))}",
+        _GET_ALL_NOCACHE,
+    ),
+    # secret/keychain：一律空（工厂已强制 file；禁止钥匙串缓存）
     (
         "getAccessToken(){return c(this,void 0,void 0,(function*(){if(this.cachedAccessToken)return this.cachedAccessToken;const e=yield this.getSecret(this.accessTokenService);return e?(this.cachedAccessToken=e,e):void 0}))}",
+        "getAccessToken(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return void 0}))}",
+    ),
+    (
         "getAccessToken(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const e=yield this.getSecret(this.accessTokenService);return e?(this.cachedAccessToken=e,e):(this.cachedAccessToken=null,void 0)}))}",
+        "getAccessToken(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return void 0}))}",
     ),
     (
         "getRefreshToken(){return c(this,void 0,void 0,(function*(){if(this.cachedRefreshToken)return this.cachedRefreshToken;const e=yield this.getSecret(this.refreshTokenService);return e?(this.cachedRefreshToken=e,e):void 0}))}",
+        "getRefreshToken(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return void 0}))}",
+    ),
+    (
         "getRefreshToken(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const e=yield this.getSecret(this.refreshTokenService);return e?(this.cachedRefreshToken=e,e):(this.cachedRefreshToken=null,void 0)}))}",
+        "getRefreshToken(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return void 0}))}",
     ),
     (
         "getApiKey(){return c(this,void 0,void 0,(function*(){if(this.cachedApiKey)return this.cachedApiKey;const e=yield this.getSecret(this.apiKeyService);return e?(this.cachedApiKey=e,e):void 0}))}",
+        "getApiKey(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return void 0}))}",
+    ),
+    (
         "getApiKey(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const e=yield this.getSecret(this.apiKeyService);return e?(this.cachedApiKey=e,e):(this.cachedApiKey=null,void 0)}))}",
+        "getApiKey(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return void 0}))}",
     ),
     (
         "getAllCredentials(){return c(this,void 0,void 0,(function*(){if(null!==this.cachedAccessToken&&null!==this.cachedRefreshToken)return{accessToken:this.cachedAccessToken||void 0,refreshToken:this.cachedRefreshToken||void 0,apiKey:this.cachedApiKey||void 0};const[e,t,n]=yield Promise.all([null!==this.cachedAccessToken?Promise.resolve(this.cachedAccessToken||void 0):this.getSecret(this.accessTokenService),null!==this.cachedRefreshToken?Promise.resolve(this.cachedRefreshToken||void 0):this.getSecret(this.refreshTokenService),null!==this.cachedApiKey?Promise.resolve(this.cachedApiKey||void 0):this.getSecret(this.apiKeyService)]);return this.cachedAccessToken=e||null,this.cachedRefreshToken=t||null,this.cachedApiKey=n||null,{accessToken:e,refreshToken:t,apiKey:n}}))}",
-        "getAllCredentials(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const[e,t,n]=yield Promise.all([this.getSecret(this.accessTokenService),this.getSecret(this.refreshTokenService),this.getSecret(this.apiKeyService)]);return this.cachedAccessToken=e||null,this.cachedRefreshToken=t||null,this.cachedApiKey=n||null,{accessToken:e,refreshToken:t,apiKey:n}}))}",
+        "getAllCredentials(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return{accessToken:void 0,refreshToken:void 0,apiKey:void 0}}))}",
     ),
-    # memory AuthStorage：禁止返回进程内字段（工厂已强制 file；此为兜底）
+    (
+        "getAllCredentials(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/const[e,t,n]=yield Promise.all([this.getSecret(this.accessTokenService),this.getSecret(this.refreshTokenService),this.getSecret(this.apiKeyService)]);return this.cachedAccessToken=e||null,this.cachedRefreshToken=t||null,this.cachedApiKey=n||null,{accessToken:e,refreshToken:t,apiKey:n}}))}",
+        "getAllCredentials(){return c(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return{accessToken:void 0,refreshToken:void 0,apiKey:void 0}}))}",
+    ),
+    # memory AuthStorage：禁止返回进程内字段
     (
         "getAccessToken(){return d(this,void 0,void 0,(function*(){var e;return null!==(e=this.accessToken)&&void 0!==e?e:void 0}))}",
         "getAccessToken(){return d(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return void 0}))}",
@@ -192,6 +293,10 @@ _REPLACEMENTS: tuple[tuple[str, str], ...] = (
     (
         "getApiKey(){return d(this,void 0,void 0,(function*(){var e;return null!==(e=this.apiKey)&&void 0!==e?e:void 0}))}",
         "getApiKey(){return d(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return void 0}))}",
+    ),
+    (
+        "getAllCredentials(){return d(this,void 0,void 0,(function*(){var e,t,n;return{accessToken:null!==(e=this.accessToken)&&void 0!==e?e:void 0,refreshToken:null!==(t=this.refreshToken)&&void 0!==t?t:void 0,apiKey:null!==(n=this.apiKey)&&void 0!==n?n:void 0}}))}",
+        "getAllCredentials(){return d(this,void 0,void 0,(function*(){/*agentcli-hot-auth*/return{accessToken:void 0,refreshToken:void 0,apiKey:void 0}}))}",
     ),
     # 工厂：一律 file AuthStorage，保证与 sc 写入的 auth.json 同源热读
     (
@@ -248,6 +353,52 @@ _REPLACEMENTS: tuple[tuple[str, str], ...] = (
         '}(e,a);'
         + _DISK_BEARER_OVERRIDE
         + 'null!=l&&s.header.set("authorization",`Bearer ${l}`);',
+    ),
+    # local-worker / indexing：se(credentialManager) 路径同样强制读盘
+    (
+        'function se(e){return t=>n=>ne(this,void 0,void 0,(function*(){const r=yield e.getAccessToken();if(!r)throw new Error("No access token found");n.header.set("authorization",`Bearer ${r}`);',
+        'function se(e){return t=>n=>ne(this,void 0,void 0,(function*(){var r=yield e.getAccessToken();'
+        '/*agentcli-hot-auth*/try{const _fs=(process.getBuiltinModule&&(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||require("node:fs"),'
+        '_path=(process.getBuiltinModule&&(process.getBuiltinModule("node:path")||process.getBuiltinModule("path")))||require("node:path"),'
+        '_os=(process.getBuiltinModule&&(process.getBuiltinModule("node:os")||process.getBuiltinModule("os")))||require("node:os");'
+        'const _dir="win32"===process.platform?_path.join(process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor"):_path.join(_os.homedir(),".cursor");'
+        'const _j=JSON.parse(_fs.readFileSync(_path.join(_dir,"auth.json"),"utf8"));if(_j&&_j.accessToken)r=_j.accessToken;'
+        '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),JSON.stringify({sub:JSON.parse(Buffer.from(String(r).split(".")[1],"base64").toString()).sub,ts:Date.now(),pid:process.pid,via:"se"}))}catch(_e){}'
+        'if(!r)throw new Error("No access token found");n.header.set("authorization",`Bearer ${r}`);',
+    ),
+    # telemetry / privacy / getMe 拦截器：credentialManager.getAccessToken 后同样强制读盘
+    (
+        'const r=yield e.credentialManager.getAccessToken();return r&&n.header.set("authorization",`Bearer ${r}`),t(n)',
+        'var r=yield e.credentialManager.getAccessToken();'
+        '/*agentcli-hot-auth*/try{const _fs=(process.getBuiltinModule&&(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||require("node:fs"),'
+        '_path=(process.getBuiltinModule&&(process.getBuiltinModule("node:path")||process.getBuiltinModule("path")))||require("node:path"),'
+        '_os=(process.getBuiltinModule&&(process.getBuiltinModule("node:os")||process.getBuiltinModule("os")))||require("node:os");'
+        'const _dir="win32"===process.platform?_path.join(process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor"):_path.join(_os.homedir(),".cursor");'
+        'const _j=JSON.parse(_fs.readFileSync(_path.join(_dir,"auth.json"),"utf8"));if(_j&&_j.accessToken)r=_j.accessToken;'
+        '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),JSON.stringify({sub:JSON.parse(Buffer.from(String(r).split(".")[1],"base64").toString()).sub,ts:Date.now(),pid:process.pid,via:"cm-t"}))}catch(_e){}'
+        'return r&&n.header.set("authorization",`Bearer ${r}`),t(n)',
+    ),
+    (
+        'const s=yield e.credentialManager.getAccessToken();return s&&n.header.set("authorization",`Bearer ${s}`),(0,r._5)(n.header),t(n)',
+        'var s=yield e.credentialManager.getAccessToken();'
+        '/*agentcli-hot-auth*/try{const _fs=(process.getBuiltinModule&&(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||require("node:fs"),'
+        '_path=(process.getBuiltinModule&&(process.getBuiltinModule("node:path")||process.getBuiltinModule("path")))||require("node:path"),'
+        '_os=(process.getBuiltinModule&&(process.getBuiltinModule("node:os")||process.getBuiltinModule("os")))||require("node:os");'
+        'const _dir="win32"===process.platform?_path.join(process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor"):_path.join(_os.homedir(),".cursor");'
+        'const _j=JSON.parse(_fs.readFileSync(_path.join(_dir,"auth.json"),"utf8"));if(_j&&_j.accessToken)s=_j.accessToken;'
+        '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),JSON.stringify({sub:JSON.parse(Buffer.from(String(s).split(".")[1],"base64").toString()).sub,ts:Date.now(),pid:process.pid,via:"cm-s"}))}catch(_e){}'
+        'return s&&n.header.set("authorization",`Bearer ${s}`),(0,r._5)(n.header),t(n)',
+    ),
+    (
+        'const r=yield e.credentialManager.getAccessToken();return r&&n.header.set("authorization",`Bearer ${r}`),o(n.header),t(n)',
+        'var r=yield e.credentialManager.getAccessToken();'
+        '/*agentcli-hot-auth*/try{const _fs=(process.getBuiltinModule&&(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||require("node:fs"),'
+        '_path=(process.getBuiltinModule&&(process.getBuiltinModule("node:path")||process.getBuiltinModule("path")))||require("node:path"),'
+        '_os=(process.getBuiltinModule&&(process.getBuiltinModule("node:os")||process.getBuiltinModule("os")))||require("node:os");'
+        'const _dir="win32"===process.platform?_path.join(process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor"):_path.join(_os.homedir(),".cursor");'
+        'const _j=JSON.parse(_fs.readFileSync(_path.join(_dir,"auth.json"),"utf8"));if(_j&&_j.accessToken)r=_j.accessToken;'
+        '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),JSON.stringify({sub:JSON.parse(Buffer.from(String(r).split(".")[1],"base64").toString()).sub,ts:Date.now(),pid:process.pid,via:"cm-o"}))}catch(_e){}'
+        'return r&&n.header.set("authorization",`Bearer ${r}`),o(n.header),t(n)',
     ),
 )
 
@@ -355,23 +506,6 @@ set "SCRIPT_DIR=%~dp0"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%sc.ps1" %*
 """
 
-# statusLine 每 1s 调一次：直调极速模块，禁止套 PowerShell / 全量 sc.cli
-_SC_STATUSLINE_CMD = r"""@echo off
-setlocal
-set PYTHONUTF8=1
-set PYTHONIOENCODING=utf-8
-if defined AGENTCLI_PATCHS_SRC (set "PYTHONPATH=%AGENTCLI_PATCHS_SRC%") else (set "PYTHONPATH=X:\Project\Public\AgentCLI-Patchs\src")
-if defined AGENTCLI_PYTHON (set "PY=%AGENTCLI_PYTHON%") else (set "PY=python")
-"%PY%" -X utf8 -m sc.statusline_fast
-"""
-
-# client.py 旁默认配置路径（复制到 %APPDATA%\Cursor\config.json）
-_CLIENT_CONFIG_CANDIDATES = (
-    Path(r"X:\Project\Common\Common\config.json"),
-    Path(r"X:\Project\Common\config.json"),
-)
-
-
 def _sc_ps1(src_dir: Path) -> str:
     src = str(src_dir).replace("'", "''")
     return f"""param([Parameter(ValueFromRemainingArguments=$true)]$ArgsRest)
@@ -389,15 +523,35 @@ exit $LASTEXITCODE
 """
 
 
+# statusLine 每 1s 调一次：直调极速模块，禁止套 PowerShell / 全量 sc.cli
+def _sc_statusline_cmd(src_dir: Path) -> str:
+    src = str(src_dir).replace("%", "%%")
+    return (
+        "@echo off\n"
+        "setlocal\n"
+        "set PYTHONUTF8=1\n"
+        "set PYTHONIOENCODING=utf-8\n"
+        f'if defined AGENTCLI_PATCHS_SRC (set "PYTHONPATH=%AGENTCLI_PATCHS_SRC%") '
+        f'else (set "PYTHONPATH={src}")\n'
+        'if defined AGENTCLI_PYTHON (set "PY=%AGENTCLI_PYTHON%") else (set "PY=python")\n'
+        '"%PY%" -X utf8 -m sc.statusline_fast\n'
+    )
+
+
 def find_client_config() -> Optional[Path]:
-    for p in _CLIENT_CONFIG_CANDIDATES:
-        if p.is_file():
-            return p
-    return None
+    """可选：从 ``AGENTCLI_SC_CONFIG_SRC`` 指向的文件播种本机 config.json。
+
+    不硬编码本机路径或 Star Cursor 地址；日常只读 ``%APPDATA%\\Cursor\\config.json``。
+    """
+    env = os.environ.get("AGENTCLI_SC_CONFIG_SRC", "").strip()
+    if not env:
+        return None
+    p = Path(env)
+    return p if p.is_file() else None
 
 
 def ensure_sc_config_from_client(*, force: bool = False) -> Optional[Path]:
-    """把 client.py 同目录 config.json 复制到与 auth.json 同级。"""
+    """若设置了 ``AGENTCLI_SC_CONFIG_SRC``，复制到与 auth.json 同级的 config.json。"""
     src = find_client_config()
     if src is None:
         return None
@@ -428,7 +582,7 @@ class CursorAgentPatch(PatchBase):
                 "AuthStorage/keychain/ephemeral 全部强制读盘；禁用 NODE_COMPILE_CACHE；"
                 "启动 agent 时自动后台 sc auto；注入 /sc pull|usage；statusline 定时刷新。"
             ),
-            version="2.3.1",
+            version="2.3.5",
             author="nichengfuben",
             target_files=(
                 "index.js",
@@ -892,7 +1046,7 @@ class CursorAgentPatch(PatchBase):
             boot_ps1 = root / "sc-autoboot.ps1"
             cmd.write_text(_SC_CMD, encoding="utf-8")
             ps1.write_text(_sc_ps1(src), encoding="utf-8")
-            sl_cmd.write_text(_SC_STATUSLINE_CMD, encoding="utf-8")
+            sl_cmd.write_text(_sc_statusline_cmd(src), encoding="utf-8")
             boot_ps1.write_text(_SC_AUTOBOOT_PS1, encoding="utf-8")
             files.extend([cmd, ps1, sl_cmd, boot_ps1])
             boot_ok, boot_file, boot_bak = self._patch_boot_cmd(root, dry_run=False)

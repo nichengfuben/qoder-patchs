@@ -12,6 +12,7 @@ from patches.cursor_agent import (
     _COMPILE_CACHE_NEW,
     _COMPILE_CACHE_OLD,
     _DISK_BEARER_OVERRIDE,
+    _GET_ACCESS_NOCACHE,
     _REPLACEMENTS,
     CursorAgentPatch,
     apply_hot_auth_replacements,
@@ -110,10 +111,15 @@ def test_metadata_includes_statusline_and_slash() -> None:
     assert "auto" in p.metadata.tags
     assert "statusline" in p.metadata.tags
     assert "slash" in p.metadata.tags
-    assert p.metadata.version >= "2.3.1"
+    assert p.metadata.version >= "2.3.5"
 
 
-def test_find_client_config() -> None:
+def test_find_client_config_requires_env(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("AGENTCLI_SC_CONFIG_SRC", raising=False)
+    assert find_client_config() is None
+    src = tmp_path / "config.json"
+    src.write_text('{"base_url":"","api_keys":[]}', encoding="utf-8")
+    monkeypatch.setenv("AGENTCLI_SC_CONFIG_SRC", str(src))
     path = find_client_config()
     assert path is not None
     assert path.name == "config.json"
@@ -130,6 +136,7 @@ def test_apply_hot_auth_on_original_snippets() -> None:
     assert "ephemeralToken:R," not in out
     assert "setEphemeralToken:e=>{R=e}" not in out
     assert "if(this.cachedAccessToken)return this.cachedAccessToken" not in out
+    assert "this.cachedAccessToken=t.accessToken" not in out
     assert "ephemeralToken:i," not in out
     assert "function A(e){/*agentcli-hot-auth*/return new a(e.domain)}" in out
     assert "function l(e){/*agentcli-hot-auth*/i=null}" in out
@@ -140,6 +147,7 @@ def test_apply_hot_auth_on_original_snippets() -> None:
     # Zn 解构不再包含 ephemeralToken
     assert "ephemeralToken:n,isTokenExpiringSoon" not in out
     assert "/*agentcli-hot-auth*/if(t&&!r(t))return t" in out
+    assert _GET_ACCESS_NOCACHE.split("/*agentcli-hot-auth*/")[1][:40] in out or "via:\"getAccessToken\"" in out
 
 
 def test_apply_hot_auth_idempotent() -> None:

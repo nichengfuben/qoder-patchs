@@ -26,7 +26,7 @@ AgentCLI Patchs 文档索引。产品用法见仓库根 [README.md](../README.md
 src/
   cli/       # Typer / 交互菜单
   core/      # engine / registry / PatchBase
-  patches/   # win10-warning, cursor-agent
+  patches/   # remove-qoder-warning, cursor-agent
   sc/        # /sc 便携换号
   utils/     # paths / backup / platform
 ```

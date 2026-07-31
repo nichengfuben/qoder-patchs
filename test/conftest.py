@@ -108,7 +108,7 @@ def patched_bundle(tmp_path: Path) -> Path:
     """Create a mock bundle directory with patches already applied.
 
     Both files contain the ``function XX(){return!1}`` pattern that
-    the Win10WarningPatch.check() method recognises as "applied".
+    the RemoveQoderWarningPatch.check() method recognises as "applied".
 
     Returns:
         Path to the temporary bundle directory.

@@ -451,7 +451,10 @@ def cmd_doctor() -> int:
         try:
             doc = json.loads(bearer_path.read_text(encoding="utf-8"))
             bsub = doc.get("sub")
-            print(f"bearer.sub: {bsub}  ts={doc.get('ts')} pid={doc.get('pid')}")
+            print(
+                f"bearer.sub: {bsub}  ts={doc.get('ts')} "
+                f"pid={doc.get('pid')} via={doc.get('via')}"
+            )
             if sub and bsub and sub != bsub:
                 print("FAIL: auth.sub ≠ bearer.sub — Agent 可能未重启或仍用旧进程")
                 ok = False

@@ -204,7 +204,7 @@ Import the class in `src/patches/__init__.py`:
 ```python
 from patches.my_patch import MyPatch
 
-__all__ = ["Win10WarningPatch", "MyPatch"]
+__all__ = ["RemoveQoderWarningPatch", "MyPatch"]
 ```
 
 The registry will automatically discover it via `pkgutil`.
@@ -242,7 +242,7 @@ print('Registered patches:', r.names())
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | `str` | Yes | Unique kebab-case identifier (e.g., `"win10-warning"`) |
+| `name` | `str` | Yes | Unique kebab-case identifier (e.g., `"remove-qoder-warning"`) |
 | `display_name` | `str` | Yes | Human-readable name for CLI display |
 | `description` | `str` | Yes | Detailed description of the patch |
 | `version` | `str` | Yes | Semantic version string (e.g., `"2.0.0"`) |

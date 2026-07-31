@@ -123,7 +123,7 @@ class BlueCLI:
         cli.banner("QODER")
         cli.header("Patch Manager")
         cli.success("All patches applied!")
-        cli.status_table({"win10-warning": PatchStatus.APPLIED})
+        cli.status_table({"remove-qoder-warning": PatchStatus.APPLIED})
     """
 
     def __init__(self, console: Optional[Console] = None) -> None:

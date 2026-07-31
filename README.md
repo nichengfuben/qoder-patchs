@@ -4,7 +4,7 @@
 
 | Patch | 作用 |
 |-------|------|
-| `win10-warning` | 抑制 Qoder CLI 的 Windows 10 启动警告 |
+| `remove-qoder-warning` | 抑制 Qoder CLI 的 Windows 10 启动警告 |
 | `cursor-agent` | Cursor Agent `auth.json` 热读 + 启动自动 `sc auto` + statusline |
 
 变更历史见 [CHANGELOG.md](CHANGELOG.md)。
@@ -33,7 +33,7 @@ acp / qp                # 短命令
 src/
   cli/       # Typer 交互与主题
   core/      # 引擎 / 注册表 / PatchBase
-  patches/   # win10-warning、cursor-agent
+  patches/   # remove-qoder-warning、cursor-agent
   sc/        # 便携换号（config 与 auth 同级；agent 启动自动 auto）
   utils/     # 路径 / 备份 / 平台
 ```
@@ -48,7 +48,7 @@ python main.py apply --all --dry-run
 
 # 应用全部 / 单个
 python main.py apply --all
-python main.py apply win10-warning
+python main.py apply remove-qoder-warning
 python main.py apply cursor-agent
 
 # 状态 / 回滚
@@ -68,7 +68,7 @@ python main.py rollback cursor-agent
   - 工厂强制 **file** AuthStorage；memory getter 兜底返回空
   - 禁用 `cursor-agent.ps1` 的 `NODE_COMPILE_CACHE`，避免补丁后仍跑旧字节码
 - **statusLine**：leader auto 实时写 `sc_instances.json`；任意实例只读该 json 刷新用量/`#`；**时间**为当前时刻实时时钟；**模型**为用户所选（stdin）
-- **配置**：从 `X:\Project\Common\Common\config.json`（client.py 同目录）复制到 `%APPDATA%\Cursor\config.json`
+- **配置**：只读 `%APPDATA%\Cursor\config.json`（`base_url` / `api_keys` 等，代码不硬编码）。可选用环境变量 `AGENTCLI_SC_CONFIG_SRC` 指向一份模板 config 做首次播种。
 - **statusline**：提示符上一行显示额度 / 换号状态（`AxN` 表示 N 个在线实例）
 
 应用后**必须完全退出并重启** `ag`。换号后对照：
@@ -81,6 +81,7 @@ python main.py rollback cursor-agent
 
 ```bash
 sc status          # 配置 / 在线实例 / 用量 / leader
+sc doctor          # 自检 hot-auth 补丁与 Bearer sub 对照
 sc auto stop       # 停止全部实例
 sc pull            # 手动拉号（一般不需要）
 ```

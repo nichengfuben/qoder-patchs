@@ -54,7 +54,7 @@ class PatchMetadata:
     immutability alongside ``frozen=True``.
 
     Attributes:
-        name: Unique identifier in kebab-case (e.g., ``"win10-warning"``).
+        name: Unique identifier in kebab-case (e.g., ``"remove-qoder-warning"``).
         display_name: Human-readable name (e.g., ``"Windows 10 Warning Suppression"``).
         description: Detailed description of what the patch does.
         version: Semantic version string (e.g., ``"2.0.0"``).

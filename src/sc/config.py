@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-"""SC 配置 I/O（config.json 与 auth.json 同级）。"""
+"""SC 配置 I/O（config.json 与 auth.json 同级）。
+
+``base_url`` / ``api_keys`` 等仅来自本机 ``config.json``，代码内不写死服务地址或密钥。
+"""
 
 import json
 from pathlib import Path
@@ -8,8 +11,9 @@ from typing import Any, Dict
 
 from sc.paths import config_json_path, cursor_config_dir
 
+# 非敏感运行默认值；base_url / api_keys 必须由用户 config.json 提供
 DEFAULT_CONFIG: Dict[str, Any] = {
-    "base_url": "http://starcursor.airoe.cn",
+    "base_url": "",
     "api_keys": [],
     # Key 日用量轮换阈值（client KeyPool.switch_threshold）
     "switch_threshold": 80,

@@ -2,6 +2,19 @@
 
 本文件记录 AgentCLI Patchs 的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.3.5
+
+- **hot-auth 无缓存**：file ``getAccessToken`` / refresh / apiKey / getAll 只 ``readAuthData``，不再写 ``cached*``
+- keychain / memory getter 一律空；memory ``getAllCredentials`` 不再回落进程内 token
+- 凭证路径仅 ``auth.json``；与账号类型无关
+
+## 2.3.4
+
+- 补丁重命名：`win10-warning` → **`remove-qoder-warning`**（`RemoveQoderWarningPatch`）
+- Star Cursor：`base_url` / `api_keys` **仅读** `%APPDATA%\Cursor\config.json`；移除代码内服务地址与本机路径硬编码
+- 可选播种：环境变量 `AGENTCLI_SC_CONFIG_SRC`；statusline/sc 启动器用 apply 时的项目 `src` 路径，不再写死盘符
+- hot-auth：升级 disk Bearer 为 `getBuiltinModule`；补齐 `credentialManager` Bearer 三处强制读盘
+
 ## 2.3.2
 
 - GitHub 仓库更名为 **AgentCLI-Patchs**
@@ -66,7 +79,7 @@
 - `config.json` 与 cursor-agent `auth.json` 同级（`%APPDATA%\Cursor\`）
 
 ### Notes
-- 原 Qoder `win10-warning` 补丁保留
+- 原 Qoder `remove-qoder-warning` 补丁保留
 
 ## 2.0.0
 

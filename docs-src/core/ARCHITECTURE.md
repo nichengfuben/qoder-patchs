@@ -75,8 +75,8 @@ This document describes the system architecture of agentcli-patchs, including co
             |
             v (concrete implementations / 具体实现)
 +------------------------+
-| Win10WarningPatch       |
-| (win10_warning.py)      |
+| RemoveQoderWarningPatch       |
+| (removeqoder_warning.py)      |
 |                         |
 | target_files:           |
 | - qodercli.js           |
@@ -202,7 +202,7 @@ Module-level helpers (ported from warp.py): `color_text()`, `kv_line()`, `status
 
 ### `patches/` -- Patch Implementations / 补丁实现
 
-#### `win10_warning.py` -- Windows 10 Warning Suppression / Win10 警告抑制
+#### `removeqoder_warning.py` -- Windows 10 Warning Suppression / Win10 警告抑制
 
 Replaces the obfuscated `isWindows10()` function body with `return!1` (i.e., `return false`).
 将混淆后的 `isWindows10()` 函数体替换为 `return!1` (即 `return false`).

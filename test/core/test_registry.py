@@ -100,18 +100,18 @@ class TestDiscoverBuiltin:
         registry = PatchRegistry()
         registry.discover_builtin()
 
-        # The project has at least win10-warning as a built-in patch
+        # The project has at least remove-qoder-warning as a built-in patch
         names = registry.names()
-        assert "win10-warning" in names
+        assert "remove-qoder-warning" in names
 
     def test_discover_builtin_returns_instances(self):
         registry = PatchRegistry()
         registry.discover_builtin()
 
-        patch = registry.get("win10-warning")
+        patch = registry.get("remove-qoder-warning")
         assert patch is not None
         assert isinstance(patch, PatchBase)
-        assert patch.metadata.name == "win10-warning"
+        assert patch.metadata.name == "remove-qoder-warning"
 
 
 class TestGetNonexistent:
