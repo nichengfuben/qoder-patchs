@@ -41,18 +41,20 @@ _REPLACEMENTS: tuple[tuple[str, str], ...] = (
 )
 
 # 紧挨 /mcp 之后、/plugin 之前注入 /sc（参数名 ui 避免遮蔽 webpack require `n`）
+# 结尾必须与 builtin 一致：insertText(...) })) }),  → 关 generator / se() / 对象 / ue.push(
 _SLASH_ANCHOR = 'ue.push({id:"plugin",title:"Plugin"'
 _SLASH_INJECT = (
     'ue.push({id:"sc",title:"SC",'
     + SLASH_MARKER
-    + 'autoExecuteOnAccept:!0,description:"Portable Star Cursor switch (pull/usage/token/status/addkey/auto)",'
+    + 'autoExecuteOnAccept:!0,'
+    'description:"Portable Star Cursor switch (pull/usage/token/status/addkey/auto)",'
     'ghostText:"[pull|usage|token|status|addkey|auto|help] [...]",'
     'boostedAlts:["starcursor","switch-account"],'
     'args:[{id:"subcommand",required:!1},{id:"rest",required:!1}],'
     "getArgSuggestions:(e,t)=>{"
     'const q=(t[0]||"").trim().toLowerCase();'
     "if(t.length<=1){"
-    'const opts=[{value:"pull",description:"Pull token → auth.json",autoExecuteOnAccept:!0},'
+    'const opts=[{value:"pull",description:"Pull token to auth.json",autoExecuteOnAccept:!0},'
     '{value:"usage",description:"Show usage",autoExecuteOnAccept:!0},'
     '{value:"token",description:"Show local token",autoExecuteOnAccept:!0},'
     '{value:"status",description:"Show status",autoExecuteOnAccept:!0},'
@@ -69,15 +71,16 @@ _SLASH_INJECT = (
     'const scCmd=root?path.join(root,"sc.cmd"):"";'
     "const args=t.slice();let proc;"
     "if(scCmd&&fs.existsSync(scCmd))"
-    "proc=cp.spawnSync(scCmd,args,{encoding:\"utf8\",shell:!0,env:process.env,timeout:12e4});"
-    "else proc=cp.spawnSync(process.env.AGENTCLI_PYTHON||\"python\","
+    'proc=cp.spawnSync(scCmd,args,{encoding:"utf8",shell:!0,env:process.env,timeout:12e4});'
+    'else proc=cp.spawnSync(process.env.AGENTCLI_PYTHON||"python",'
     '["-m","sc"].concat(args),{encoding:"utf8",shell:!1,env:process.env,timeout:12e4});'
-    's=((proc.stdout||"")+(proc.stderr||"")).trim()||`(exit ${null!=proc.status?proc.status:"?"})`;'
+    's=((proc.stdout||"")+(proc.stderr||"")).trim()||("exit "+String(proc.status));'
     "i=null!=proc.status?proc.status:1"
     "}catch(e){s=String(null!=e.message?e.message:e);i=1}"
-    "const lines=s.split(/\\r?\\n/).map((e=>[{text:e,color:i?\"red\":\"green\"}]));"
-    "null===(r=ui.print)||void 0===r||r.call(ui,lines.length?lines:[[{text:\"(no output)\",dim:!0}]],"
-    "{minLingerMs:8e3}),ui.insertText(''))})),"
+    'const lines=s.split(/\\r?\\n/).map((e=>[{text:e,color:i?"red":"green"}]));'
+    "null===(r=ui.print)||void 0===r||r.call(ui,lines.length?lines:"
+    '[[{text:"(no output)",dim:!0}]],{minLingerMs:8e3}),'
+    'ui.insertText("")}))}),'
     + _SLASH_ANCHOR
 )
 
@@ -191,13 +194,40 @@ class CursorAgentPatch(PatchBase):
             hits += 1
             if dry_run:
                 continue
+            new_text = text.replace(_SLASH_ANCHOR, _SLASH_INJECT, 1)
+            # 写入前用 node --check 校验，避免再写出非法 JS
+            self._assert_js_syntax(chunk, new_text)
             bak = chunk.with_suffix(chunk.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
             bak.write_text(text, encoding="utf-8")
             backups.append(bak)
-            chunk.write_text(text.replace(_SLASH_ANCHOR, _SLASH_INJECT, 1), encoding="utf-8")
+            chunk.write_text(new_text, encoding="utf-8")
             files.append(chunk)
             logger.info("Patched /sc slash in {}", chunk)
         return hits, files, backups
+
+    def _assert_js_syntax(self, path: Path, source: str) -> None:
+        import subprocess
+        import tempfile
+
+        node = find_cursor_agent_bundle()
+        node_exe = (node / "node.exe") if node and (node / "node.exe").exists() else Path("node")
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".js", delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp.write(source)
+            tmp_path = tmp.name
+        try:
+            proc = subprocess.run(
+                [str(node_exe), "--check", tmp_path],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+        if proc.returncode != 0:
+            err = (proc.stderr or proc.stdout or "").strip()
+            raise RuntimeError(f"slash inject failed node --check on {path.name}: {err}")
 
     def apply(self, bundle_dir: Path, dry_run: bool = False) -> PatchResult:
         start = time.monotonic()

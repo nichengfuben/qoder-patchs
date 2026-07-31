@@ -15,7 +15,8 @@ def test_slash_inject_contains_marker_and_anchor() -> None:
     assert SLASH_MARKER in _SLASH_INJECT
     assert _SLASH_ANCHOR in _SLASH_INJECT
     assert 'id:"sc"' in _SLASH_INJECT
-    assert "ui.insertText('')" in _SLASH_INJECT
+    assert 'ui.insertText("")}))}),' in _SLASH_INJECT
+    assert "ui.insertText('')" not in _SLASH_INJECT or 'ui.insertText("")' in _SLASH_INJECT
     assert 'n("node:child_process")' in _SLASH_INJECT
 
 
