@@ -1,30 +1,26 @@
-"""Tests for patches.cursor_agent slash/hot-auth markers."""
+"""Tests for patches.cursor_agent."""
 
 from __future__ import annotations
 
-from patches.cursor_agent import (
-    MARKER,
-    SLASH_MARKER,
-    _SLASH_ANCHOR,
-    _SLASH_INJECT,
-    CursorAgentPatch,
-)
-
-
-def test_slash_inject_contains_marker_and_anchor() -> None:
-    assert SLASH_MARKER in _SLASH_INJECT
-    assert _SLASH_ANCHOR in _SLASH_INJECT
-    assert 'id:"sc"' in _SLASH_INJECT
-    assert 'ui.insertText("")}))}),' in _SLASH_INJECT
-    assert "ui.insertText('')" not in _SLASH_INJECT or 'ui.insertText("")' in _SLASH_INJECT
-    assert 'n("node:child_process")' in _SLASH_INJECT
+from patches.cursor_agent import BOOT_MARKER, MARKER, CursorAgentPatch, find_client_config
 
 
 def test_hot_auth_marker() -> None:
     assert MARKER.startswith("/*") and MARKER.endswith("*/")
 
 
-def test_metadata() -> None:
+def test_boot_marker() -> None:
+    assert "agentcli-sc-auto-boot" in BOOT_MARKER
+
+
+def test_metadata_no_slash() -> None:
     p = CursorAgentPatch()
     assert p.metadata.name == "cursor-agent"
-    assert "slash" in p.metadata.tags
+    assert "slash" not in p.metadata.tags
+    assert "auto" in p.metadata.tags
+
+
+def test_find_client_config() -> None:
+    path = find_client_config()
+    assert path is not None
+    assert path.name == "config.json"

@@ -2,6 +2,11 @@
 
 本文件记录 AgentCLI Patchs 的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.2.0
+
+- 删除全部 Agent `/sc` slash；进入 `ag` 时由 `cursor-agent.cmd` 自动后台 `sc auto`
+- apply 时从 `Common/config.json`（client.py）复制到 `%APPDATA%\Cursor\config.json`
+
 ## 2.1.5
 
 - 移除冗余 `sc usage`（用量由 `/sc status`、statusLine、`auto` 覆盖）

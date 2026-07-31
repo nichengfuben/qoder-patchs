@@ -5,7 +5,7 @@
 | Patch | 作用 |
 |-------|------|
 | `win10-warning` | 抑制 Qoder CLI 的 Windows 10 启动警告 |
-| `cursor-agent` | Cursor Agent `auth.json` 热读 + 安装便携 `sc` / `/sc` 换号 |
+| `cursor-agent` | Cursor Agent `auth.json` 热读 + 启动自动 `sc auto` + statusline |
 
 变更历史见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -25,7 +25,6 @@ pip install -e ".[dev]"
 python main.py          # 交互菜单
 agentcli-patchs         # 同上（pip 后）
 acp / qp                # 短命令
-sc /sc help             # 便携换号 CLI（需先 apply cursor-agent 或 PYTHONPATH=src）
 ```
 
 源码布局（`pythonpath=src`）：
@@ -35,7 +34,7 @@ src/
   cli/       # Typer 交互与主题
   core/      # 引擎 / 注册表 / PatchBase
   patches/   # win10-warning、cursor-agent
-  sc/        # /sc 便携换号（config 与 auth 同级）
+  sc/        # 便携换号（config 与 auth 同级；agent 启动自动 auto）
   utils/     # 路径 / 备份 / 平台
 ```
 
@@ -59,58 +58,36 @@ python main.py rollback cursor-agent
 
 ### `cursor-agent` 做了什么
 
-逆向 `%LOCALAPPDATA%\cursor-agent\versions\<ver>\`：
+逆向 `%LOCALAPPDATA%\cursor-agent\`：
 
-- **Auth 热读**（`index.js` AuthStorage）：去掉 `cachedAccessToken` 短路，每次 `readAuthData()` 读盘；外部改写 `%APPDATA%\Cursor\auth.json` **无需再为换号重启** agent
-- **Agent 内置 `/sc` slash**（webpack chunk，如 `5305.index.js`）：在 `/mcp` 后注册 builtin `/sc`；仅装 `sc.cmd` **不会**让交互框里的 `/sc` 生效（会落到技能模糊匹配）
-- **便携启动器**：安装根写入 `sc.cmd` / `sc.ps1`（`PYTHONPATH` 指向本仓库 `src`）
+- **Auth 热读**（`index.js`）：去掉缓存短路，外部改写 `%APPDATA%\Cursor\auth.json` 立即生效
+- **启动自动换号**：改写 `cursor-agent.cmd`，进入 `ag` 时后台启动 `sc auto`（**无 /sc slash 命令**）
+- **配置**：从 `X:\Project\Common\Common\config.json`（client.py 同目录）复制到 `%APPDATA%\Cursor\config.json`
+- **statusline**：提示符上一行显示额度 / 换号状态
 
-应用补丁后需**重启一次** `cursor-agent` / `ag`，slash 表才会重新加载。
+应用后**重启一次** `ag`。
 
-### `/sc` 便携换号
+### 配置与状态
 
-`config.json` **不**放在执行目录，与 cursor-agent 的 `auth.json` 同级：
-
-- Windows: `%APPDATA%\Cursor\config.json` + `auth.json`
-- macOS: `~/.cursor/config.json` + `auth.json`
-- Linux: `$XDG_CONFIG_HOME/cursor/`（或 `~/.config/cursor/`）
-
-在 **Agent 输入框**（与 `/mcp` 同级）：
-
-```text
-/sc help
-/sc pull
-/sc status
-/sc auto
-```
-
-或在 shell：
+`config.json` 与 `auth.json` 同级：`%APPDATA%\Cursor\`
 
 ```bash
-sc addkey sc_xxxxxxxx          # 写入同级 config.json
-sc pull                        # 拉号 → 写 auth.json（热生效）
-sc token / sc status
-sc auto                        # 后台轮询，超限自动换号
-sc auto stop
+sc status          # 查看配置/用量/auto 进程
+sc auto stop       # 停止后台换号
+sc pull            # 手动拉号（一般不需要）
 ```
 
-### Statusline（完整 sc 状态栏）
+### Statusline
 
-apply `cursor-agent` 后会：
-
-1. 安装 `%LOCALAPPDATA%\cursor-agent\sc-statusline.cmd`
-2. 写入/合并 `~/.cursor/cli-config.json` 的 `statusLine`，指向上述命令
-3. 运行时把完整状态写入 `%APPDATA%\Cursor\sc_status.json`（与 auth 同级）
-
-Agent 提示符上方显示**一行**紧凑状态（对齐 client.py 信息密度）：
+apply 后写入 `~/.cursor/cli-config.json` 的 `statusLine`。一行紧凑状态：
 
 - 常态：`SC A OK 67.2% [######....] a12.0% p55.0% user@x/pro #12`
-- 刷新额度：`SC A ↻#12 OK 67.2% […] …`（`↻` 表示正在/刚查用量）
-- 换号/拉号：`SC SWITCH 96.0% […] thr>=95% → user@x 超阈值…`（高亮）
+- 刷新：`SC A ↻#12 OK …`
+- 换号：`SC SWITCH 96.0% … thr>=95% → …`
 
-`A`=auto 开，`-`=关。详细面板仍用 `/sc status`。
+`A`=auto 开，`-`=关。详情用 `sc status`。
 
-**重启一次 `ag`** 后 statusLine 生效。若你已有自定义 statusLine，apply 会覆盖 `statusLine` 字段（其它 cli-config 项保留）。
+**重启一次 `ag`** 后 statusLine 与 auto-boot 生效。若你已有自定义 statusLine，apply 会覆盖 `statusLine` 字段（其它 cli-config 项保留）。
 ---
 
 ## 配置（补丁管理器本身）

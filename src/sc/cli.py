@@ -383,14 +383,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     cmd = (ns.command or "help").lower()
     if cmd in ("help", "-h", "--help"):
         print(
-            "用法: sc|/sc <命令>\n"
-            "  pull          拉号并写入 auth.json（热生效）\n"
-            "  token         查看本地 Token\n"
-            "  status        配置/进程/实时状态（含用量）\n"
-            "  statusline    供 Agent statusLine 调用（stdin JSON）\n"
-            "  addkey <key>  添加 Star Cursor API Key\n"
-            "  auto          后台实时轮询，超限自动换号\n"
-            "  auto stop     停止后台轮询\n"
+            "用法: sc <命令>\n"
+            "  auto / auto stop   后台换号监测（agent 启动会自动 auto）\n"
+            "  status             配置/进程/用量\n"
+            "  statusline         Agent statusLine\n"
+            "  pull / token / addkey  手动维护\n"
             f"config: {config_json_path()}\n"
             f"auth:   {auth_json_path()}\n"
             f"status: {status_json_path()}"
