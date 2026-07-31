@@ -72,10 +72,11 @@ _SLASH_INJECT = (
     'const root=process.env.LOCALAPPDATA?path.join(process.env.LOCALAPPDATA,"cursor-agent"):"";'
     'const scCmd=root?path.join(root,"sc.cmd"):"";'
     "const args=t.slice();let proc;"
+    'const env=Object.assign({},process.env,{PYTHONUTF8:"1",PYTHONIOENCODING:"utf-8"});'
     "if(scCmd&&fs.existsSync(scCmd))"
-    'proc=cp.spawnSync(scCmd,args,{encoding:"utf8",shell:!0,env:process.env,timeout:12e4});'
+    'proc=cp.spawnSync(scCmd,args,{encoding:"utf8",shell:!0,env:env,timeout:12e4});'
     'else proc=cp.spawnSync(process.env.AGENTCLI_PYTHON||"python",'
-    '["-m","sc"].concat(args),{encoding:"utf8",shell:!1,env:process.env,timeout:12e4});'
+    '["-m","sc"].concat(args),{encoding:"utf8",shell:!1,env:env,timeout:12e4});'
     's=((proc.stdout||"")+(proc.stderr||"")).trim()||("exit "+String(proc.status));'
     "i=null!=proc.status?proc.status:1"
     "}catch(e){s=String(null!=e.message?e.message:e);i=1}"
@@ -88,12 +89,18 @@ _SLASH_INJECT = (
 
 _SC_CMD = r"""@echo off
 setlocal
+chcp 65001 >nul
+set PYTHONUTF8=1
+set PYTHONIOENCODING=utf-8
 set "SCRIPT_DIR=%~dp0"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%sc.ps1" %*
 """
 
 _SC_STATUSLINE_CMD = r"""@echo off
 setlocal
+chcp 65001 >nul
+set PYTHONUTF8=1
+set PYTHONIOENCODING=utf-8
 set "SCRIPT_DIR=%~dp0"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%sc.ps1" statusline
 """
@@ -104,9 +111,15 @@ def _sc_ps1(src_dir: Path) -> str:
     src = str(src_dir).replace("'", "''")
     return f"""param([Parameter(ValueFromRemainingArguments=$true)]$ArgsRest)
 $ErrorActionPreference = "Stop"
+try {{ chcp 65001 | Out-Null }} catch {{}}
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 $env:PYTHONPATH = if ($env:AGENTCLI_PATCHS_SRC) {{ $env:AGENTCLI_PATCHS_SRC }} else {{ '{src}' }}
 $py = if ($env:AGENTCLI_PYTHON) {{ $env:AGENTCLI_PYTHON }} else {{ 'python' }}
-& $py -m sc @ArgsRest
+& $py -X utf8 -m sc @ArgsRest
 exit $LASTEXITCODE
 """
 
@@ -193,18 +206,31 @@ class CursorAgentPatch(PatchBase):
         files: list[Path] = []
         backups: list[Path] = []
         hits = 0
+        sc_block = _SLASH_INJECT[: -len(_SLASH_ANCHOR)]
         for chunk in self._slash_chunks(bundle_dir):
             text = chunk.read_text(encoding="utf-8", errors="ignore")
+            new_text: Optional[str] = None
             if SLASH_MARKER in text:
+                start = text.find('ue.push({id:"sc"')
+                end = text.find('ue.push({id:"plugin"', start) if start >= 0 else -1
+                if start >= 0 and end > start:
+                    current = text[start:end]
+                    if current != sc_block:
+                        new_text = text[:start] + sc_block + text[end:]
+                        hits += 1
+                    else:
+                        hits += 1
+                        continue
+                else:
+                    hits += 1
+                    continue
+            elif _SLASH_ANCHOR in text:
+                new_text = text.replace(_SLASH_ANCHOR, _SLASH_INJECT, 1)
                 hits += 1
+            else:
                 continue
-            if _SLASH_ANCHOR not in text:
+            if dry_run or new_text is None:
                 continue
-            hits += 1
-            if dry_run:
-                continue
-            new_text = text.replace(_SLASH_ANCHOR, _SLASH_INJECT, 1)
-            # 写入前用 node --check 校验，避免再写出非法 JS
             self._assert_js_syntax(chunk, new_text)
             bak = chunk.with_suffix(chunk.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
             bak.write_text(text, encoding="utf-8")

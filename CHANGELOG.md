@@ -2,6 +2,10 @@
 
 本文件记录 AgentCLI Patchs 的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.1.4
+
+- 全方位 UTF-8：`sc` 启动强制 UTF-8 stdio；`sc.cmd`/`sc.ps1`/`sc-statusline` 设 `PYTHONUTF8`+`chcp 65001`；`/sc` spawn 注入同环境，修复 Agent 内中文乱码
+
 ## 2.1.3
 
 - statusLine 改为一行紧凑格式（对齐 client.py）：突出 `↻` 刷新额度与 `SWITCH`/`PULL` 换号

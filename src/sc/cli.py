@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
+from sc.encoding import ensure_utf8_stdio, utf8_env
 from sc import api, auth
 from sc.config import load_config, save_config
 from sc.paths import auth_json_path, config_json_path, cursor_config_dir
@@ -314,11 +315,12 @@ def cmd_auto(*, foreground: bool = False) -> int:
         log_path = cursor_config_dir() / "sc_auto.log"
         log_f = open(log_path, "a", encoding="utf-8")  # noqa: SIM115
         subprocess.Popen(
-            [sys.executable, "-m", "sc", "auto", "--fg"],
+            [sys.executable, "-X", "utf8", "-m", "sc", "auto", "--fg"],
             creationflags=creation,
             close_fds=True,
             stdout=log_f,
             stderr=log_f,
+            env=utf8_env(),
         )
         time.sleep(0.5)
         set_action("polling", "已后台启动 auto", auto_running=True, auto_pid=_read_auto_pid())
@@ -394,6 +396,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    ensure_utf8_stdio()
     raw = list(sys.argv[1:] if argv is None else argv)
     args = _normalize_argv(raw)
     parser = build_parser()
