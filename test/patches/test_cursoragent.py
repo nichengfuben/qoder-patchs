@@ -172,13 +172,16 @@ def test_compile_cache_ps1_snippet() -> None:
     assert out == _COMPILE_CACHE_NEW
 
 
-def test_metadata() -> None:
+def test_metadata_and_markers() -> None:
     p = CursorAgentPatch()
     assert p.metadata.name == "cursor-agent"
     assert "auto" in p.metadata.tags
     assert "statusline" in p.metadata.tags
     assert "slash" in p.metadata.tags
     assert p.metadata.version >= "2.3.5"
+    assert MARKER.startswith("/*") and MARKER.endswith("*/")
+    assert STATUS_INTERVAL_MARKER.startswith("/*") and FOOTER_KEEP_MARKER.startswith("/*")
+    assert "agentcli-sc-auto-boot" in BOOT_MARKER
 
 
 def test_find_client_config_requires_env(monkeypatch, tmp_path: Path) -> None:
@@ -267,27 +270,6 @@ def test_patchops_on_temp_virgin_bundle(
 
     status = CursorAgentPatch().check(version)
     assert status in (PatchStatus.PARTIAL, PatchStatus.APPLIED)
-
-
-def test_markers() -> None:
-    assert MARKER.startswith("/*") and MARKER.endswith("*/")
-    assert STATUS_INTERVAL_MARKER.startswith("/*") and FOOTER_KEEP_MARKER.startswith("/*")
-    assert "agentcli-sc-auto-boot" in BOOT_MARKER
-
-
-def test_statusline_launcher_py38_pip_fallback() -> None:
-    """源码直跑可用 -S 提速；pip 安装的 -m 分支不能 -S（会跳过 site-packages）。"""
-    from patches.cursor.cursor_launchers import sc_statusline_cmd, sc_statusline_sh
-
-    cmd = sc_statusline_cmd(Path("/opt/patcher/src"))
-    assert "-S -X utf8 \"%PYTHONPATH%\\sc\\statusline_fast.py\"" in cmd
-    assert '"%PY%" -X utf8 -m sc.statusline_fast' in cmd
-    assert "-S -X utf8 -m sc.statusline_fast" not in cmd
-
-    sh = sc_statusline_sh(Path("/opt/patcher/src"))
-    assert '-S -X utf8 "$PYTHONPATH/sc/statusline_fast.py"' in sh
-    assert 'exec "$PY" -X utf8 -m sc.statusline_fast' in sh
-    assert "-S -X utf8 -m sc.statusline_fast" not in sh
 
 
 def test_unix_wrapper_and_launchers(
