@@ -18,6 +18,8 @@ from sc.core.paths import sc_home_dir
 INSTANCES_FILE = "sc_instances.json"
 LOCK_FILE = "sc_instances.lock"
 STALE_SEC = 10.0
+# 活进程长请求宽限：超时且无心跳才 prune，避免换号/查用量时被踢死
+STALE_GRACE_SEC = 120.0
 HEARTBEAT_SEC = 2.0
 SCHEMA_VERSION = 1
 
@@ -31,6 +33,20 @@ def _is_stale(ts: float, *, now: Optional[float] = None) -> bool:
     if t <= 0:
         return True
     return (now - t) >= STALE_SEC
+
+
+def _instance_active(info: Dict[str, Any], *, now: Optional[float] = None) -> bool:
+    """心跳新鲜，或进程仍存活且未超过宽限。"""
+    now = time.time() if now is None else now
+    try:
+        hb = float(info.get("heartbeat_at") or 0)
+        pid = int(info.get("pid") or 0)
+    except Exception:
+        return False
+    age = (now - hb) if hb > 0 else 1e9
+    if age < STALE_SEC:
+        return True
+    return bool(pid) and _pid_alive(pid) and age < STALE_GRACE_SEC
 
 
 def home_cursor_dir() -> Path:
@@ -179,9 +195,7 @@ def _fresh_entries(
     now = time.time() if now is None else now
     out: List[Tuple[float, str, Dict[str, Any]]] = []
     for iid, info in (data.get("instances") or {}).items():
-        if not isinstance(info, dict):
-            continue
-        if _is_stale(float(info.get("heartbeat_at") or 0), now=now):
+        if not isinstance(info, dict) or not _instance_active(info, now=now):
             continue
         started = float(info.get("started_at") or 0)
         out.append((started, str(iid), info))
@@ -193,11 +207,7 @@ def _prune_by_timestamp(data: Dict[str, Any], *, now: Optional[float] = None) ->
     removed: List[str] = []
     inst_map = data.get("instances") or {}
     for iid, info in list(inst_map.items()):
-        if not isinstance(info, dict):
-            inst_map.pop(iid, None)
-            removed.append(iid)
-            continue
-        if _is_stale(float(info.get("heartbeat_at") or 0), now=now):
+        if not isinstance(info, dict) or not _instance_active(info, now=now):
             inst_map.pop(iid, None)
             removed.append(iid)
     data["instances"] = inst_map
@@ -385,15 +395,3 @@ def stop_all_instances() -> List[int]:
                 killed.append(pid)
         _write_unlocked(_empty())
     return killed
-
-
-def leader_prune_stale(instance_id: str) -> Dict[str, Any]:
-    from sc.run.autoloop import leader_prune_stale as _impl
-
-    return _impl(instance_id)
-
-
-def follower_clear_stale_leader(instance_id: str) -> Dict[str, Any]:
-    from sc.run.autoloop import follower_clear_stale_leader as _impl
-
-    return _impl(instance_id)

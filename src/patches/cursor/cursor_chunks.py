@@ -8,14 +8,15 @@ SLASH_MARKER = "/*agentcli-sc-slash*/"
 
 # use-status-line.ts：上游把 updateIntervalMs 当成 debounce，不是定时器。
 # 空闲时 updateSignal 不变 → statusLine 不刷新 → 时钟卡住。
-# 补 setInterval，按 updateIntervalMs（下限 300ms）真正轮询命令。
+# 补 setInterval；必须直调 S（不要走 debounced C），否则 tick 会被 debounce 吞掉。
 _STATUS_INTERVAL_OLD = (
     "return(0,l.useEffect)((()=>{var e;return b?(C(E.payload),()=>{var e;"
     "C.cancel(),null===(e=m.current)||void 0===e||e.abort()}):(C.cancel(),"
     "null===(e=m.current)||void 0===e||e.abort(),m.current=null,v.current=null,"
     "void g(null))}),[E,C,b]),{text:p,padding:y}}"
 )
-_STATUS_INTERVAL_NEW = (
+# 旧版补丁：setInterval→C（仍经 debounce），升级时替换
+_STATUS_INTERVAL_V1 = (
     "return(0,l.useEffect)((()=>{var e;"
     + STATUS_INTERVAL_MARKER
     + "if(!b)return C.cancel(),null===(e=m.current)||void 0===e||e.abort(),"
@@ -24,6 +25,73 @@ _STATUS_INTERVAL_NEW = (
     "return()=>{clearInterval(t),C.cancel(),null===(e=m.current)||void 0===e||e.abort()}"
     "}),[E,C,b,w]),{text:p,padding:y}}"
 )
+# v2：直调 S 但 deps 含 E → updateSignal 一变就 tearDown interval（跑久必挂）
+_STATUS_INTERVAL_V2 = (
+    "return(0,l.useEffect)((()=>{var e;"
+    + STATUS_INTERVAL_MARKER
+    + "if(!b)return C.cancel(),null===(e=m.current)||void 0===e||e.abort(),"
+    "m.current=null,v.current=null,void g(null);"
+    "const r=()=>{var a;null===(a=m.current)||void 0===a||a.abort();"
+    "const n=new AbortController;m.current=n,S(E.payload,n.signal)};"
+    "r();const t=setInterval(r,w);"
+    "return()=>{clearInterval(t),C.cancel(),null===(e=m.current)||void 0===e||e.abort()}"
+    "}),[E,C,b,w,S]),{text:p,padding:y}}"
+)
+# v3：payload ref + 稳定 deps，interval 不被 updateSignal 打断
+_STATUS_INTERVAL_REF = "const _scPl=(0,l.useRef)(t);_scPl.current=t;"
+_STATUS_INTERVAL_NEW = (
+    "return(0,l.useEffect)((()=>{var e;"
+    + STATUS_INTERVAL_MARKER
+    + "if(!b)return C.cancel(),null===(e=m.current)||void 0===e||e.abort(),"
+    "m.current=null,v.current=null,void g(null);"
+    "const r=()=>{var a;null===(a=m.current)||void 0===a||a.abort();"
+    "const n=new AbortController;m.current=n,S(_scPl.current,n.signal)};"
+    "r();const t=setInterval(r,w);"
+    "return()=>{clearInterval(t),C.cancel(),null===(e=m.current)||void 0===e||e.abort()}"
+    "}),[b,w,S,x]),{text:p,padding:y}}"
+)
+_STATUS_INTERVAL_BEFORE_EFFECT = (
+    "E=(0,l.useMemo)((()=>({payload:t,updateSignal:s,commandKey:x})),[t,s,x]);return(0,l.useEffect)"
+)
+_STATUS_INTERVAL_BEFORE_EFFECT_REF = (
+    "E=(0,l.useMemo)((()=>({payload:t,updateSignal:s,commandKey:x})),[t,s,x]);"
+    + _STATUS_INTERVAL_REF
+    + "return(0,l.useEffect)"
+)
+
+
+def apply_statusline_interval_text(text: str) -> tuple[str, str]:
+    """返回 (新文本, 动作标签)；已是 v3 则 ("", "")。"""
+    if _STATUS_INTERVAL_NEW in text and _STATUS_INTERVAL_REF in text:
+        return "", ""
+    if _STATUS_INTERVAL_V2 in text:
+        text = text.replace(_STATUS_INTERVAL_V2, _STATUS_INTERVAL_NEW, 1)
+        label = "upgrade-v2"
+    elif _STATUS_INTERVAL_V1 in text:
+        text = text.replace(_STATUS_INTERVAL_V1, _STATUS_INTERVAL_NEW, 1)
+        label = "upgrade-v1"
+    elif _STATUS_INTERVAL_OLD in text:
+        text = text.replace(_STATUS_INTERVAL_OLD, _STATUS_INTERVAL_NEW, 1)
+        label = "patch"
+    else:
+        return "", ""
+    if _STATUS_INTERVAL_BEFORE_EFFECT in text and _STATUS_INTERVAL_REF not in text:
+        text = text.replace(_STATUS_INTERVAL_BEFORE_EFFECT, _STATUS_INTERVAL_BEFORE_EFFECT_REF, 1)
+    return text, label
+
+
+def restore_statusline_interval_text(text: str) -> str:
+    restored = text.replace(_STATUS_INTERVAL_NEW, _STATUS_INTERVAL_OLD, 1)
+    if restored == text:
+        restored = text.replace(_STATUS_INTERVAL_V2, _STATUS_INTERVAL_OLD, 1)
+    if restored == text:
+        restored = text.replace(_STATUS_INTERVAL_V1, _STATUS_INTERVAL_OLD, 1)
+    if restored != text and _STATUS_INTERVAL_BEFORE_EFFECT_REF in restored:
+        restored = restored.replace(
+            _STATUS_INTERVAL_BEFORE_EFFECT_REF, _STATUS_INTERVAL_BEFORE_EFFECT, 1
+        )
+    return restored
+
 
 # prompt-footer.tsx：自定义 statusLine 原会替换模型/模式行并隐藏路径行。
 # 改为始终渲染原生页脚，SC 命令输出追加在下方。

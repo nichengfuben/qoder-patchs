@@ -47,16 +47,13 @@ def cmd_usage() -> int:
     write_status(last_error="")
     set_action("ok", f"usage total={usage['total_pct']}%")
     print(
-        f"total={usage['total_pct']}%  auto={usage['auto_pct']}%  "
-        f"api={usage['api_pct']}%  status={usage['status']}  "
-        f"membership={usage.get('membership')}"
+        f"total={usage['total_pct']}% (= (auto+api)/2)  "
+        f"auto={usage['auto_pct']}%  api={usage['api_pct']}%  "
+        f"status={usage['status']}  membership={usage.get('membership')}"
     )
     print(f"used={usage.get('used')} remaining={usage.get('remaining')} pool={usage.get('total')}")
     if usage.get("message"):
         print(usage["message"])
-    for line in format_status_lines():
-        print("--- live ---")
-        print(line)
     return 0
 
 

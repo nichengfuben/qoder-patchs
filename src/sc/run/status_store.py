@@ -6,32 +6,16 @@ import json
 import os
 import time
 import uuid
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 from sc.core.paths import migrate_legacy_sc_home, sc_home_dir
 
 STATUS_FILE = "sc_status.json"
-NUDGE_FILE = "sc_nudge.json"
 
 
 def status_json_path():
     migrate_legacy_sc_home()
     return sc_home_dir() / STATUS_FILE
-
-
-def request_continue_nudge(text: str = "继续") -> Path:
-    """换号成功后写入一次性信号；Agent UI 轮询到后 submitMessage 并删除。"""
-    path = sc_home_dir() / NUDGE_FILE
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {"action": "continue", "text": text or "继续", "ts": int(time.time() * 1000)},
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-    return path
 
 
 def read_status() -> Dict[str, Any]:

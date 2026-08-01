@@ -3,14 +3,29 @@ from __future__ import annotations
 """StatusLine entry + SC line formatting (compat module for -m sc.statusline_fast)."""
 
 import json
+import re
 import sys
-import threading
 import time
 from typing import Any, Dict, List, Optional
 
-from echotools.media.console import TextUtils
-
 from sc.run.status_store import display_state, read_status
+
+_ANSI_RE = re.compile(r"\033\[[0-9;]*[a-zA-Z]")
+
+
+def _strip_ansi(s: str) -> str:
+    return _ANSI_RE.sub("", s)
+
+
+def _visible_len(s: str) -> int:
+    return len(_strip_ansi(s))
+
+
+def _truncate_ansi(s: str, width: int) -> str:
+    if _visible_len(s) <= width:
+        return s
+    plain = _strip_ansi(s)
+    return plain[: max(0, width - 1)] + "…\033[0m"
 
 
 def _pct(v: Any) -> str:
@@ -62,17 +77,6 @@ def _plan_badge(d: Dict[str, Any]) -> tuple[str, str]:
         "OK": ("OK", green),
     }
     return colors.get(st, (st[:6], cyan))
-
-
-def _visible_len(s: str) -> int:
-    return TextUtils.display_width(s)
-
-
-def _truncate_ansi(s: str, width: int) -> str:
-    if TextUtils.display_width(s) <= width:
-        return s
-    plain = TextUtils.strip_ansi(s)
-    return TextUtils.truncate(plain, max(0, width - 1)) + "…\033[0m"
 
 
 def _fit_bar_width(fixed_visible: int, width: int, default: int = 30) -> int:
@@ -230,28 +234,15 @@ def format_status_lines(
 
 
 
-def _read_stdin_width(timeout: float = 0.15) -> int:
+def _read_stdin_width() -> int:
     if sys.stdin is None:
         return 0
     try:
         if sys.stdin.isatty():
             return 0
+        raw = sys.stdin.read()
     except Exception:
         return 0
-    holder: List[str] = []
-
-    def _reader() -> None:
-        try:
-            holder.append(sys.stdin.read() or "")
-        except Exception:
-            holder.append("")
-
-    t = threading.Thread(target=_reader, daemon=True)
-    t.start()
-    t.join(timeout)
-    if not holder:
-        return 0
-    raw = holder[0]
     if not raw.strip():
         return 0
     try:

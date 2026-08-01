@@ -27,7 +27,12 @@ from patches.cursor.cursor_chunks import (
     _SLASH_INJECT,
     _STATUS_INTERVAL_NEW,
     _STATUS_INTERVAL_OLD,
+    _STATUS_INTERVAL_REF,
+    _STATUS_INTERVAL_V1,
+    _STATUS_INTERVAL_V2,
+    apply_statusline_interval_text,
     inject_nudge as _inject_nudge,
+    restore_statusline_interval_text,
     strip_nudge as _strip_nudge,
 )
 from patches.cursor.cursor_launchers import (
@@ -118,7 +123,7 @@ def patch_compile_cache_ps1(
 def patch_statusline_interval(
     bundle_dir: Path, dry_run: bool
 ) -> tuple[int, list[Path], list[Path]]:
-    """把 use-status-line 的 debounce 改成按 updateIntervalMs 的 setInterval。"""
+    """statusLine：ref 保最新 payload + 稳定 deps，避免跑久后时钟/条冻住。"""
     files: list[Path] = []
     backups: list[Path] = []
     hits = 0
@@ -127,25 +132,22 @@ def patch_statusline_interval(
             text = chunk.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        if STATUS_INTERVAL_MARKER in text:
-            hits += 1
+        new_text, label = apply_statusline_interval_text(text)
+        if not label:
+            if STATUS_INTERVAL_MARKER in text and _STATUS_INTERVAL_REF in text:
+                hits += 1
             continue
-        if _STATUS_INTERVAL_OLD not in text:
-            continue
+        hits += 1
         if dry_run:
-            hits += 1
             continue
         bak = chunk.with_suffix(chunk.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
         bak.write_text(text, encoding="utf-8")
-        chunk.write_text(
-            text.replace(_STATUS_INTERVAL_OLD, _STATUS_INTERVAL_NEW, 1),
-            encoding="utf-8",
-        )
+        chunk.write_text(new_text, encoding="utf-8")
         files.append(chunk)
         backups.append(bak)
-        hits += 1
-        logger.info("Patched statusLine interval in {}", chunk.name)
+        logger.info("statusLine interval {} in {}", label, chunk.name)
     return hits, files, backups
+
 
 def strip_statusline_interval(
     bundle_dir: Path, dry_run: bool
@@ -157,17 +159,16 @@ def strip_statusline_interval(
             text = chunk.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        if _STATUS_INTERVAL_NEW not in text and STATUS_INTERVAL_MARKER not in text:
+        if STATUS_INTERVAL_MARKER not in text:
             continue
-        if dry_run:
-            hits += 1
-            continue
-        restored = text.replace(_STATUS_INTERVAL_NEW, _STATUS_INTERVAL_OLD, 1)
+        restored = restore_statusline_interval_text(text)
         if restored == text:
+            continue
+        hits += 1
+        if dry_run:
             continue
         chunk.write_text(restored, encoding="utf-8")
         files.append(chunk)
-        hits += 1
     return hits, files
 
 def patch_footer_keep(

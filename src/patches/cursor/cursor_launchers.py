@@ -37,6 +37,10 @@ if (Test-Path -LiteralPath $inst) {
     }
   } catch {}
 }
+$sl = Join-Path $root "sc-statusline.cmd"
+if (Test-Path -LiteralPath $sl) {
+  Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "echo {}| `"$sl`"") -WindowStyle Hidden -NoNewWindow | Out-Null
+}
 $argv = @("auto", "--fg")
 Start-Process -FilePath $sc -ArgumentList $argv -WindowStyle Hidden | Out-Null
 """
@@ -100,7 +104,11 @@ def sc_statusline_cmd(src_dir: Path) -> str:
         'if defined PATCHER_SRC (set "PYTHONPATH=%PATCHER_SRC%") else if defined AGENTCLI_PATCHS_SRC (set "PYTHONPATH=%AGENTCLI_PATCHS_SRC%") '
         f'else (set "PYTHONPATH={src}")\n'
         'if defined PATCHER_PYTHON (set "PY=%PATCHER_PYTHON%") else if defined AGENTCLI_PYTHON (set "PY=%AGENTCLI_PYTHON%") else (set "PY=python")\n'
-        '"%PY%" -X utf8 -m sc.statusline_fast\n'
+        'if exist "%PYTHONPATH%\\sc\\statusline_fast.py" (\n'
+        '  "%PY%" -S -X utf8 "%PYTHONPATH%\\sc\\statusline_fast.py"\n'
+        ") else (\n"
+        '  "%PY%" -S -X utf8 -m sc.statusline_fast\n'
+        ")\n"
     )
 
 
@@ -134,7 +142,8 @@ def sc_statusline_sh(src_dir: Path) -> str:
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         + _bash_py_env(src_dir)
-        + 'exec "$PY" -X utf8 -m sc.statusline_fast\n'
+        + 'if [ -f "$PYTHONPATH/sc/statusline_fast.py" ]; then exec "$PY" -S -X utf8 "$PYTHONPATH/sc/statusline_fast.py"; fi\n'
+        + 'exec "$PY" -S -X utf8 -m sc.statusline_fast\n'
     )
 
 
@@ -165,6 +174,8 @@ except Exception:
     if [ "$AGE" -lt 10 ]; then exit 0; fi
   fi
 fi
+SL="$ROOT/sc-statusline"
+[ -x "$SL" ] && printf '{}\n' | "$SL" >/dev/null 2>&1 || true
 nohup "$SC" auto --fg >/dev/null 2>&1 &
 """
 

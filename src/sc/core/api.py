@@ -262,9 +262,8 @@ def parse_usage(data: Dict[str, Any]) -> Dict[str, Any]:
     bonus = _usage_float(breakdown.get("bonus"))
     auto_pct = _usage_float(plan.get("autoPercentUsed"))
     api_pct = _usage_float(plan.get("apiPercentUsed"))
-    total_pct = (
-        (auto_pct + api_pct) / 2.0 if (auto_pct > 0 or api_pct > 0) else 0.0
-    )
+    # 总用量唯一算法：(auto + api) / 2；不用 API 的 totalPercentUsed
+    total_pct = (auto_pct + api_pct) / 2.0
     used = round(total * total_pct / 100.0, 2) if total > 0 else 0.0
     remaining = max(total - used, 0.0)
     membership = str(data.get("membershipType") or "-")

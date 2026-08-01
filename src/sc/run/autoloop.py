@@ -56,8 +56,10 @@ def follower_clear_stale_leader(instance_id: str) -> Dict[str, Any]:
             return data
         if lid:
             info = (data.get("instances") or {}).get(lid)
-            hb = float(info.get("heartbeat_at") or 0) if isinstance(info, dict) else 0.0
-            if (not isinstance(info, dict)) or inst._is_stale(hb, now=now):  # noqa: SLF001
+            gone = (not isinstance(info, dict)) or (
+                not inst._instance_active(info, now=now)  # noqa: SLF001
+            )
+            if gone:
                 (data.get("instances") or {}).pop(lid, None)
                 data["leader_id"] = None
                 usage = data.get("usage")

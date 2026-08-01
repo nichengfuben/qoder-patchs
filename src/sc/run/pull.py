@@ -24,16 +24,6 @@ def usage_threshold(cfg: dict) -> float:
     return 90.0
 
 
-def _request_agent_continue(text: str = "继续") -> None:
-    try:
-        from sc.run.status_store import request_continue_nudge
-
-        nudge_path = request_continue_nudge(text)
-        print(f"已请求 Agent 自动继续 → {nudge_path}")
-    except Exception as nudge_exc:
-        print(f"写入自动继续信号失败: {nudge_exc}")
-
-
 def make_pool(cfg: dict) -> KeyPool:
     keys = [str(k) for k in (cfg.get("api_keys") or []) if k]
     return KeyPool(
@@ -279,7 +269,6 @@ def _check_usage_ok(
         if not api.is_limit_reached(usage, threshold):
             set_action("ok", f"换号成功 total={usage['total_pct']:.1f}% < {threshold}%")
             print(f"换号成功，额度正常 ({usage['total_pct']:.1f}% < {threshold}%)")
-            _request_agent_continue()
             return True
         if attempt < attempts:
             set_action("switching", f"新号仍超阈值 (>={threshold}%)，继续拉号")
@@ -295,11 +284,8 @@ def _check_usage_ok(
         hint = api.short_error(exc)
         print(f"校验新号用量失败: {hint}")
         set_action("ok", f"pull 已写入，用量校验失败: {hint}")
-        # auth 已换新；用量 API 失败时仍让 Agent 用新号重试，避免卡在旧额度 UI
-        if attempt >= attempts:
-            _request_agent_continue()
-            return True
-        return False
+        # auth 已换新；末次校验失败仍视为成功，由用户/Agent 自行重试
+        return attempt >= attempts
 
 
 def pull_until_acceptable_usage(

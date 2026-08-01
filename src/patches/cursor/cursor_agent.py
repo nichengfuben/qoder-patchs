@@ -82,7 +82,7 @@ class CursorAgentPatch(PatchBase):
             name="cursor-agent",
             display_name="Cursor Agent 热更新与自动换号",
             description=(
-                "AuthStorage/keychain/ephemeral 全部强制读盘；换号后自动继续；禁用 NODE_COMPILE_CACHE；"
+                "AuthStorage/keychain/ephemeral 全部强制读盘；禁用 NODE_COMPILE_CACHE；"
                 "启动 agent 时自动后台 sc auto；注入 /sc pull|usage；statusline 定时刷新。"
             ),
             version="2.4.0",
@@ -170,8 +170,8 @@ def _apply_patch(patch: CursorAgentPatch, bundle_dir: Path, dry_run: bool) -> Pa
     return PatchResult(
         status=PatchStatus.APPLIED,
         message=(
-            f"hot-auth(v2 ephemeral-off) + auto-boot + /sc + continue-nudge + statusline 已应用 "
-            f"(hot={stats['hot']}, slash={stats['slash']}, nudge={stats['nudge']}, "
+            f"hot-auth(v2 ephemeral-off) + auto-boot + /sc + statusline 已应用 "
+            f"(hot={stats['hot']}, slash={stats['slash']}, nudge_removed={stats['nudge']}, "
             f"interval={stats['iv']}, footer={stats['ft']}, boot={stats['boot']}, "
             f"launchers={stats['ag']}, config={stats['cfg']}, root={root})"
         ),
@@ -256,7 +256,8 @@ def _apply_side_patches(
     stats["slash"] = slash_hits
     files.extend(slash_files)
     backups.extend(slash_baks)
-    nudge_hits, nudge_files, nudge_baks = ops._inject_nudge(target, dry_run=False)
+    # 停用换号后自动 submitMessage(继续)：应用时剥离旧 nudge 注入
+    nudge_hits, nudge_files, nudge_baks = ops._strip_nudge(target, dry_run=False)
     stats["nudge"] = nudge_hits
     files.extend(nudge_files)
     backups.extend(nudge_baks)

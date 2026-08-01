@@ -9,7 +9,7 @@ from typing import Optional
 
 from patches.cursor.cursor_chunks import (
     NUDGE_MARKER,
-    _FOOTER_KEEP_NEW, _FOOTER_KEEP_OLD, _NUDGE_ANCHOR, _SLASH_ANCHOR, _SLASH_INJECT,
+    _FOOTER_KEEP_NEW, _FOOTER_KEEP_OLD, _SLASH_ANCHOR, _SLASH_INJECT,
     _STATUS_INTERVAL_NEW, _STATUS_INTERVAL_OLD,
 )
 from patches.cursor.cursor_repls import _REPLACEMENTS
@@ -42,9 +42,8 @@ def optional_uichunk_ok(texts: list[str], marker: str, old: str) -> bool:
 
 
 def nudge_flag_ok(chunks: list[str]) -> bool:
-    return any(NUDGE_MARKER in t for t in chunks) or not any(
-        _NUDGE_ANCHOR in t for t in chunks
-    )
+    # continue-nudge 已停用：残留注入视为未达预期（重新 apply 会 strip）
+    return not any(NUDGE_MARKER in t for t in chunks)
 
 _COMPILE_CACHE_OLD = (
     "## Enable Node.js compile cache for faster CLI startup (requires Node.js >= 22.1.0)\n"

@@ -29,7 +29,8 @@ def merge_status_line(command: str, *, padding: int = 1, update_ms: int = 1000) 
         "padding": padding,
         # 1s 读 json 刷新量条/时钟；用量 API 由 sc auto 5s 轮询，不在此命令里打
         "updateIntervalMs": update_ms,
-        "timeoutMs": 2000,
+        # Win 冷启动 python 偶发 >2s；超时则 UI 不改字 → 时钟/条看起来“死了”
+        "timeoutMs": 5000,
     }
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path

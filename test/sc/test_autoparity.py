@@ -43,6 +43,23 @@ def test_parse_usage_both_zero_no_total_percent_fallback() -> None:
     assert u["total_pct"] == 0.0
 
 
+def test_parse_usage_ignores_api_total_percent_used() -> None:
+    """即使 API 带 totalPercentUsed，也只认 (auto+api)/2。"""
+    u = parse_usage(
+        {
+            "individualUsage": {
+                "plan": {
+                    "autoPercentUsed": 60,
+                    "apiPercentUsed": 40,
+                    "totalPercentUsed": 99,
+                    "breakdown": {"total": 100},
+                }
+            }
+        }
+    )
+    assert u["total_pct"] == 50.0
+
+
 def test_is_limit_reached_uses_usage_threshold() -> None:
     assert is_limit_reached({"total_pct": 95.0, "is_unlimited": False}, 95.0)
     assert not is_limit_reached({"total_pct": 94.9, "is_unlimited": False}, 95.0)

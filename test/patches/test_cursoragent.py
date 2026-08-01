@@ -135,13 +135,23 @@ def test_each_virgin_old_becomes_new(virgin_index: str) -> None:
 
 
 def test_uichunk_status_footer_slash_on_virgin(virgin_uichunk: str) -> None:
+    from patches.cursor.cursor_chunks import apply_statusline_interval_text
+
     text = virgin_uichunk
     assert _STATUS_INTERVAL_OLD in text and STATUS_INTERVAL_MARKER not in text
-    status = text.replace(_STATUS_INTERVAL_OLD, _STATUS_INTERVAL_NEW, 1)
-    assert STATUS_INTERVAL_MARKER in status
+    status, label = apply_statusline_interval_text(text)
+    assert label == "patch"
+    needles = (
+        STATUS_INTERVAL_MARKER,
+        "setInterval(r,w)",
+        "_scPl.current",
+        "S(_scPl.current,n.signal)",
+        "}),[b,w,S,x]",
+    )
+    assert all(n in status for n in needles)
     assert _STATUS_INTERVAL_OLD not in status
-    assert "setInterval((()=>C(E.payload)),w)" in status
-
+    assert "setInterval((()=>C(E.payload)),w)" not in status
+    assert "}),[E,C,b,w,S]" not in status
     assert _FOOTER_KEEP_OLD in status and FOOTER_KEEP_MARKER not in status
     footer = status.replace(_FOOTER_KEEP_OLD, _FOOTER_KEEP_NEW, 1)
     assert FOOTER_KEEP_MARKER in footer
@@ -244,9 +254,10 @@ def test_patchops_on_temp_virgin_bundle(
     sl_hits, _, _ = ops._inject_slash(version, dry_run=False)
     assert iv_hits >= 1 and ft_hits >= 1 and sl_hits >= 1
     chunk_text = chunk.read_text(encoding="utf-8")
-    assert STATUS_INTERVAL_MARKER in chunk_text
-    assert FOOTER_KEEP_MARKER in chunk_text
+    assert STATUS_INTERVAL_MARKER in chunk_text and "_scPl.current" in chunk_text
+    assert "}),[b,w,S,x]" in chunk_text and FOOTER_KEEP_MARKER in chunk_text
     assert SLASH_MARKER in chunk_text
+    assert "setInterval((()=>C(E.payload)),w)" not in chunk_text
 
     ps1_hits, _, _ = ops.patch_compile_cache_ps1(root, dry_run=False)
     assert ps1_hits >= 1
@@ -260,10 +271,8 @@ def test_patchops_on_temp_virgin_bundle(
 
 def test_markers() -> None:
     assert MARKER.startswith("/*") and MARKER.endswith("*/")
-    assert STATUS_INTERVAL_MARKER.startswith("/*")
-    assert FOOTER_KEEP_MARKER.startswith("/*")
+    assert STATUS_INTERVAL_MARKER.startswith("/*") and FOOTER_KEEP_MARKER.startswith("/*")
     assert "agentcli-sc-auto-boot" in BOOT_MARKER
-
 
 def test_unix_wrapper_and_launchers(
     virgin_index: str, virgin_uichunk: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

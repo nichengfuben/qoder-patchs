@@ -43,8 +43,9 @@ def test_elect_single_instance(tmp_path, monkeypatch) -> None:
 
 
 def test_elect_ignores_stale_even_if_started_later(tmp_path, monkeypatch) -> None:
-    """过期实例不参与选举，即使 started_at 更晚。"""
+    """死进程过期不参与选举，即使 started_at 更晚。"""
     monkeypatch.setattr(inst, "home_cursor_dir", lambda: tmp_path)
+    monkeypatch.setattr(inst, "_pid_alive", lambda pid: pid == 1)
     now = 1_000_000.0
     data = {
         "version": 1,
@@ -59,10 +60,26 @@ def test_elect_ignores_stale_even_if_started_later(tmp_path, monkeypatch) -> Non
     assert "stale_but_late" in data["instances"]
 
 
-def test_leader_prune_clears_stale_timestamp(tmp_path, monkeypatch) -> None:
-    """仅 leader：now - hb >= 10 直接清。"""
+def test_elect_keeps_alive_pid_during_grace(tmp_path, monkeypatch) -> None:
+    """活进程在宽限内即使心跳过期仍参与选举（长请求不掉 leader）。"""
     monkeypatch.setattr(inst, "home_cursor_dir", lambda: tmp_path)
     monkeypatch.setattr(inst, "_pid_alive", lambda pid: True)
+    now = 1_000_000.0
+    data = {
+        "version": 1,
+        "instances": {
+            "busy": {"started_at": 100.0, "heartbeat_at": now - 60, "pid": 7},
+        },
+        "leader_id": None,
+        "usage": {},
+    }
+    assert inst._elect(data, now=now) == "busy"
+
+
+def test_leader_prune_clears_stale_timestamp(tmp_path, monkeypatch) -> None:
+    """死进程且 hb 过期才清；活进程宽限内保留。"""
+    monkeypatch.setattr(inst, "home_cursor_dir", lambda: tmp_path)
+    monkeypatch.setattr(inst, "_pid_alive", lambda pid: pid == 1)
     now = 1_000_000.0
     data = {
         "version": 1,
@@ -80,9 +97,9 @@ def test_leader_prune_clears_stale_timestamp(tmp_path, monkeypatch) -> None:
 
 
 def test_follower_clears_stale_leader(tmp_path, monkeypatch) -> None:
-    """非 leader：now - leader.hb >= 10 → 清实例 + Leader，再选举。"""
+    """非 leader：旧 leader 进程已死且 hb 过期 → 清实例再选举。"""
     monkeypatch.setattr(inst, "home_cursor_dir", lambda: tmp_path)
-    monkeypatch.setattr(inst, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(inst, "_pid_alive", lambda pid: pid == 2)
     now = 1_000_000.0
     data = {
         "version": 1,
@@ -105,7 +122,9 @@ def test_follower_clears_stale_leader(tmp_path, monkeypatch) -> None:
         json.dumps(data), encoding="utf-8"
     )
     monkeypatch.setattr(inst.time, "time", lambda: now)
-    out = inst.follower_clear_stale_leader("follower")
+    from sc.run.autoloop import follower_clear_stale_leader
+
+    out = follower_clear_stale_leader("follower")
     assert "old_leader" not in (out.get("instances") or {})
     assert out.get("leader_id") == "follower"
     assert out.get("last_follower_cleared") == "old_leader"
