@@ -107,7 +107,7 @@ def sc_statusline_cmd(src_dir: Path) -> str:
         'if exist "%PYTHONPATH%\\sc\\statusline_fast.py" (\n'
         '  "%PY%" -S -X utf8 "%PYTHONPATH%\\sc\\statusline_fast.py"\n'
         ") else (\n"
-        '  "%PY%" -S -X utf8 -m sc.statusline_fast\n'
+        '  "%PY%" -X utf8 -m sc.statusline_fast\n'
         ")\n"
     )
 
@@ -143,7 +143,7 @@ def sc_statusline_sh(src_dir: Path) -> str:
         "set -euo pipefail\n"
         + _bash_py_env(src_dir)
         + 'if [ -f "$PYTHONPATH/sc/statusline_fast.py" ]; then exec "$PY" -S -X utf8 "$PYTHONPATH/sc/statusline_fast.py"; fi\n'
-        + 'exec "$PY" -S -X utf8 -m sc.statusline_fast\n'
+        + 'exec "$PY" -X utf8 -m sc.statusline_fast\n'
     )
 
 
