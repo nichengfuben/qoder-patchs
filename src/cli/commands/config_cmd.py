@@ -22,7 +22,7 @@ def config_show() -> None:
     config = app._get_config()
     cli = app._get_cli()
 
-    cli.print("[bold bright_blue]当前配置:[/bold bright_blue]")
+    cli.print("[header]当前配置:[/header]")
     # 当前配置:
 
     for section_name in ("patch", "ui", "paths", "persistence"):
@@ -48,7 +48,7 @@ def config_set(
 ) -> None:
     """修改配置项."""  # 修改配置项.
     from cli import app
-    from cli.echotools_bridge import coerce_config_set_value
+    from echotools.media.console import coerce_config_set_value
 
     config = app._get_config()
     cli = app._get_cli()

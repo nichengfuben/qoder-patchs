@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from cli.echotools_bridge import render_gradient_banner, render_text
+from echotools.media.console import render_gradient_banner, render_text
 
 
 class TestRenderText:

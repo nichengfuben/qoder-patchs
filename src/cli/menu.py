@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from cli.echotools_bridge import (
+from echotools.media.console import (
     coerce_config_value,
-    create_patcher_ui,
+    create_themed_ui,
     flatten_config_fields,
+    normalize_theme_name,
     run_confirm,
     run_select,
 )
@@ -32,10 +33,19 @@ _MAIN_MENU_CHOICES = [
 _menu_ui = None
 
 
+def _resolve_menu_theme() -> str:
+    try:
+        from cli import app
+
+        return normalize_theme_name(app._get_config().ui.theme)
+    except Exception:
+        return normalize_theme_name(None)
+
+
 def _get_menu_ui():
     global _menu_ui
     if _menu_ui is None:
-        _menu_ui = create_patcher_ui()
+        _menu_ui = create_themed_ui(theme_name=_resolve_menu_theme())
     return _menu_ui
 
 

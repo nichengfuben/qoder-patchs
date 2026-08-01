@@ -31,7 +31,7 @@ class TestDefaultValues:
 
     def test_ui_settings_defaults(self):
         ui = UISettings()
-        assert ui.theme == "blue"
+        assert ui.theme == "ocean"
         assert ui.show_banner is True
         assert ui.verbose is False
         assert ui.use_color is True
@@ -48,7 +48,7 @@ class TestDefaultValues:
         assert isinstance(config.ui, UISettings)
         assert isinstance(config.paths, PathSettings)
         assert config.patch.backup_count == 3
-        assert config.ui.theme == "blue"
+        assert config.ui.theme == "ocean"
 
 
 class TestLoadFromToml:
@@ -58,7 +58,7 @@ class TestLoadFromToml:
         config = AppConfig.load(temp_config)
         assert config.patch.backup_count == 5
         assert config.patch.auto_backup is True
-        assert config.ui.theme == "blue"
+        assert config.ui.theme == "ocean"
         assert config.ui.show_banner is True
         assert config.persistence.scheduled_task is True
 
@@ -72,7 +72,7 @@ class TestLoadFromToml:
         config = AppConfig.load(partial)
         assert config.patch.backup_count == 7
         assert config.patch.auto_backup is True  # default
-        assert config.ui.theme == "blue"  # default
+        assert config.ui.theme == "ocean"  # default
 
 
 class TestLoadMissingFile:
@@ -82,7 +82,7 @@ class TestLoadMissingFile:
         missing = tmp_path / "nonexistent.toml"
         config = AppConfig.load(missing)
         assert config.patch.backup_count == 3
-        assert config.ui.theme == "blue"
+        assert config.ui.theme == "ocean"
 
     def test_load_none_returns_defaults(self):
         config = AppConfig.load(None)

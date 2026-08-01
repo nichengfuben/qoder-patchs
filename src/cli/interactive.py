@@ -17,7 +17,7 @@ def _show_interactive_banner(cli, config) -> None:
     cli.banner("PATCHER")
     cli.print()
     cli.print(
-        f"  [bold bright_blue]Patcher v{__version__}[/bold bright_blue]"
+        f"  [header]Patcher v{__version__}[/header]"
     )
     cli.divider()
     cli.print()
@@ -197,7 +197,7 @@ def _interactive_config(cli) -> None:
 def show_about(cli) -> None:
     """Display about information."""
     cli.print()
-    cli.print(f"  [bold bright_blue]AgentCLI Patchs v{__version__}[/bold bright_blue]")
+    cli.print(f"  [header]AgentCLI Patchs v{__version__}[/header]")
     cli.print("  [dim]作者: nichengfuben[/dim]")  # 作者
     cli.print("  [dim]许可证: MIT[/dim]")  # 许可证
     cli.print(

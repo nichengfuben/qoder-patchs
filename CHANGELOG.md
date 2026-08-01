@@ -4,8 +4,7 @@
 
 ## 2.5.3
 
-- **CLI UI 下沉 echotools**：移除 `questionary` 与本地 `charmap.py`；交互菜单、ASCII 横幅、主题与配置编辑改由 `echotools[console]` 驱动
-- **新增** `cli/echotools_bridge.py`：同步 select/confirm、Patcher 渐变主题、配置 flatten/coerce 工具
+- **CLI UI 完全下沉 echotools**：删除 `cli/echotools_bridge.py`；通用 `RichCLI` + 7 套主题（ocean/forest/sunset/violet/rose/slate/cyan）；Patcher 仅保留 `PatcherCLI.status_table` 与业务菜单；配置 `ui.theme` 默认 `ocean`（`blue` 仍兼容）
 - **statusLine**：ANSI 宽度/截断改用 `echotools.TextUtils`
 - **hotfix**：continue-nudge 改为 `const` 声明项 `_agentcliNudge=(0,c.useEffect)(...)`（锚点在多 declarator 的 `const` 链内；旧「裸表达式」会 `Unexpected token '('`，旧「分号语句」会截断 `const` 导致渲染 `ReferenceError` 喷源码）
 - **hotfix**：JS 校验用 `Module.wrap`；换号自动继续须等 `br.submitMessage` 就绪再删 `sc_nudge.json`

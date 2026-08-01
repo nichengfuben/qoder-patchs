@@ -134,13 +134,14 @@ def _missing_target_hint(name: str) -> str:
 
 
 def _get_cli():
-    """Lazily create and return BlueCLI."""
-    from cli.ui import BlueCLI
+    """Lazily create and return PatcherCLI."""
+    from cli.ui import PatcherCLI
 
     if _state["cli"] is not None:
         return _state["cli"]
 
-    cli = BlueCLI()
+    config = _get_config()
+    cli = PatcherCLI(theme_name=config.ui.theme)
     _state["cli"] = cli
     return cli
 

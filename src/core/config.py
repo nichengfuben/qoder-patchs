@@ -47,7 +47,10 @@ class UISettings(BaseModel):
     for the CLI interface.
     """
 
-    theme: str = Field(default="blue", description="UI theme name (currently only 'blue')")
+    theme: str = Field(
+        default="ocean",
+        description="UI theme name: ocean, forest, sunset, violet, rose, slate, cyan (legacy: blue)",
+    )
     show_banner: bool = Field(default=True, description="Show ASCII art banner on startup")
     verbose: bool = Field(default=False, description="Enable verbose output mode")
     use_color: bool = Field(default=True, description="Enable colored terminal output")

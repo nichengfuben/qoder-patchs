@@ -12,9 +12,9 @@ def ensure_utf8_stdio() -> None:
     os.environ["PYTHONIOENCODING"] = "utf-8"
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
     try:
-        from cli.echotools_bridge import _ensure_windows_console
+        from echotools.media.console import ensure_windows_console
 
-        _ensure_windows_console()
+        ensure_windows_console()
     except Exception:
         pass
     for name in ("stdout", "stderr"):
