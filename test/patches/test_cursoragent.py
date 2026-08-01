@@ -306,10 +306,18 @@ def test_slash_inject_resolves_unix_sc_root() -> None:
     assert '"sc.cmd":"sc"' in _SLASH_INJECT or '?"sc.cmd":"sc"' in _SLASH_INJECT
 
 
-def test_nudge_inject_and_strip(tmp_path: Path) -> None:
-    from patches.cursor.cursor_chunks import NUDGE_MARKER, _NUDGE_ANCHOR, _NUDGE_INJECT
-    from patches.cursor import cursor_patchops as ops
+def test_nudge_inject_and_strip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from patches.cursor.cursor_chunks import (
+        NUDGE_MARKER,
+        _NUDGE_ANCHOR,
+        _NUDGE_INJECT,
+        inject_nudge,
+        strip_nudge,
+    )
 
+    monkeypatch.setattr(
+        "patches.cursor.cursor_patchops.assert_js_syntax", lambda path, source: None
+    )
     version = tmp_path / "versions" / "t"
     version.mkdir(parents=True)
     chunk = version / "5305.index.js"
@@ -319,12 +327,12 @@ def test_nudge_inject_and_strip(tmp_path: Path) -> None:
         + ",zz=1",
         encoding="utf-8",
     )
-    hits, files, _ = ops._inject_nudge(version, dry_run=False)
+    hits, files, _ = inject_nudge(version, dry_run=False)
     assert hits >= 1 and files
     text = chunk.read_text(encoding="utf-8")
     assert NUDGE_MARKER in text and _NUDGE_INJECT in text
     assert "sc_nudge.json" in text and "submitMessage" in text
-    sh, sf, _ = ops._strip_nudge(version, dry_run=False)
+    sh, sf, _ = strip_nudge(version, dry_run=False)
     assert sh >= 1 and sf
     assert NUDGE_MARKER not in chunk.read_text(encoding="utf-8")
     assert _NUDGE_ANCHOR in chunk.read_text(encoding="utf-8")

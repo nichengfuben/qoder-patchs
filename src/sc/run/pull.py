@@ -270,7 +270,7 @@ def _check_usage_ok(
             set_action("ok", f"换号成功 total={usage['total_pct']:.1f}% < {threshold}%")
             print(f"换号成功，额度正常 ({usage['total_pct']:.1f}% < {threshold}%)")
             try:
-                from sc.run.nudge import request_continue_nudge
+                from sc.run.status_store import request_continue_nudge
 
                 nudge_path = request_continue_nudge("继续")
                 print(f"已请求 Agent 自动继续 → {nudge_path}")

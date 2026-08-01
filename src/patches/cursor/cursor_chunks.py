@@ -172,3 +172,88 @@ _NUDGE_INJECT = (
     "}catch(_e){}}),1e3);return()=>clearInterval(_iv)}),[br])"
     + _NUDGE_ANCHOR
 )
+
+
+def _nudge_strip_region(text: str) -> str:
+    if NUDGE_MARKER not in text:
+        return text
+    start = text.find("," + NUDGE_MARKER)
+    if start < 0:
+        start = text.find(NUDGE_MARKER)
+    end = text.find(_NUDGE_ANCHOR, start) if start >= 0 else -1
+    if start < 0 or end <= start:
+        return text
+    return text[:start] + text[end:]
+
+
+def inject_nudge(bundle_dir, dry_run: bool = False):
+    """注入换号后自动 submitMessage(继续) 的 UI 轮询。"""
+    import time
+    from pathlib import Path
+
+    from loguru import logger
+    from patches.cursor.cursor_patchops import assert_js_syntax
+
+    files: list = []
+    backups: list = []
+    hits = 0
+    root = Path(bundle_dir)
+    for chunk in root.glob("*.index.js"):
+        try:
+            text = chunk.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if _NUDGE_ANCHOR not in text and NUDGE_MARKER not in text:
+            continue
+        working = _nudge_strip_region(text)
+        if _NUDGE_ANCHOR not in working:
+            continue
+        if _NUDGE_INJECT in working:
+            hits += 1
+            continue
+        hits += 1
+        if dry_run:
+            continue
+        new_text = working.replace(_NUDGE_ANCHOR, _NUDGE_INJECT, 1)
+        assert_js_syntax(chunk, new_text)
+        bak = chunk.with_suffix(chunk.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
+        bak.write_text(text, encoding="utf-8")
+        backups.append(bak)
+        chunk.write_text(new_text, encoding="utf-8")
+        files.append(chunk)
+        logger.info("Injected sc continue-nudge into {}", chunk)
+    return hits, files, backups
+
+
+def strip_nudge(bundle_dir, dry_run: bool = False):
+    import time
+    from pathlib import Path
+
+    from loguru import logger
+    from patches.cursor.cursor_patchops import assert_js_syntax
+
+    files: list = []
+    backups: list = []
+    hits = 0
+    for chunk in Path(bundle_dir).glob("*.index.js"):
+        try:
+            text = chunk.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if NUDGE_MARKER not in text:
+            continue
+        new_text = _nudge_strip_region(text)
+        if new_text == text:
+            continue
+        hits += 1
+        if dry_run:
+            continue
+        assert_js_syntax(chunk, new_text)
+        bak = chunk.with_suffix(chunk.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
+        bak.write_text(text, encoding="utf-8")
+        backups.append(bak)
+        chunk.write_text(new_text, encoding="utf-8")
+        files.append(chunk)
+        logger.info("Removed sc continue-nudge from {}", chunk)
+    return hits, files, backups
+
