@@ -51,12 +51,14 @@ class TestRenderGradientBanner:
         banner = render_gradient_banner(lines)
         assert isinstance(banner, str)
         assert len(banner) > 0
+        assert "\033[" in banner
 
     def test_render_gradient_banner_custom_palette(self):
         lines = render_text("X")
         custom = [(255, 0, 0), (0, 255, 0)]
         banner = render_gradient_banner(lines, palette=custom)
         assert isinstance(banner, str)
+        assert "\033[38;2;" in banner
 
     def test_render_gradient_banner_preserves_line_count(self):
         lines = render_text("OK")

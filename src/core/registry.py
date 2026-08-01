@@ -168,6 +168,10 @@ class PatchRegistry:
 
         count = 0
         for ep in patch_eps:
+            if ep.name in self._patches:
+                # builtin 已注册时跳过，避免与旧包 agentcli-patchs 的 entry point 重复告警
+                logger.debug(f"Skipping entry point '{ep.name}': already registered")
+                continue
             try:
                 patch_class = ep.load()
                 if not (isinstance(patch_class, type) and issubclass(patch_class, PatchBase)):
@@ -178,6 +182,11 @@ class PatchRegistry:
                 instance = patch_class()
                 self.register(instance)
                 count += 1
+            except ModuleNotFoundError as exc:
+                logger.warning(
+                    f"Failed to load external patch '{ep.name}': {exc} "
+                    f"(若仍安装旧包 agentcli-patchs，可 pip uninstall agentcli-patchs)"
+                )
             except Exception as exc:
                 logger.warning(f"Failed to load external patch '{ep.name}': {exc}")
 

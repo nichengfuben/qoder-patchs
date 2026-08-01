@@ -235,10 +235,20 @@ def _elect(data: Dict[str, Any], *, now: Optional[float] = None) -> Optional[str
     return leader
 
 
+def _touch_caller_heartbeat(data: Dict[str, Any]) -> None:
+    """mutate/read 会 elect；刷新本进程心跳，避免长请求自我掉 leader。"""
+    pid = os.getpid()
+    for info in (data.get("instances") or {}).values():
+        if isinstance(info, dict) and int(info.get("pid") or 0) == pid:
+            info["heartbeat_at"] = time.time()
+            break
+
+
 def mutate(fn) -> Dict[str, Any]:
     with _file_lock():
         data = _read_unlocked()
         fn(data)
+        _touch_caller_heartbeat(data)
         _elect(data)
         _write_unlocked(data)
         return data
@@ -247,6 +257,7 @@ def mutate(fn) -> Dict[str, Any]:
 def read_instances() -> Dict[str, Any]:
     with _file_lock():
         data = _read_unlocked()
+        _touch_caller_heartbeat(data)
         _elect(data)
         _write_unlocked(data)
         return data
@@ -294,8 +305,6 @@ def heartbeat(instance_id: str, *, parent_pid: Optional[int] = None) -> Dict[str
             info["parent_pid"] = parent_pid
 
     return mutate(_op)
-
-
 
 
 def unregister(instance_id: str) -> None:

@@ -116,6 +116,16 @@ _INSTANCES = "sc_instances.json"
 _STALE_AFTER_SEC = 20.0
 
 
+def _leader_ttl() -> float:
+    """与 instances.STALE_SEC 对齐，避免展示层与选举层判定不一致。"""
+    try:
+        from sc.run.instances import STALE_SEC
+
+        return float(STALE_SEC)
+    except Exception:
+        return 10.0
+
+
 def _read_instances_doc() -> Dict[str, Any]:
     path = sc_home_dir() / _INSTANCES
     if not path.exists():
@@ -138,7 +148,7 @@ def _leader_fresh(doc: Dict[str, Any], *, now: float) -> bool:
         hb = float(info.get("heartbeat_at") or 0)
     except Exception:
         return False
-    return hb > 0 and (now - hb) < 10.0
+    return hb > 0 and (now - hb) < _leader_ttl()
 
 
 def display_state() -> Dict[str, Any]:

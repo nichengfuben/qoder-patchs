@@ -82,8 +82,10 @@ def cmd_auto_stop() -> int:
 
 
 def still_leader(instance_id: str) -> bool:
+    """确认仍是 leader。先心跳再检查，避免换号/查用量阻塞超过 STALE_SEC 被自我踢下线。"""
     try:
-        return inst.is_leader(instance_id)
+        doc = inst.heartbeat(instance_id)
+        return bool(doc.get("leader_id") == instance_id)
     except Exception:
         return False
 
