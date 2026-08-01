@@ -86,13 +86,16 @@ _SLASH_INJECT = (
     'null===(r=ui.print)||void 0===r||r.call(ui,[[{text:"usage: /sc pull | /sc usage",color:"red"}]],{minLingerMs:4e3});'
     'return void ui.insertText("")}'
     "let s=\"\",i=1;try{"
-    'const cp=n("node:child_process"),path=n("node:path"),fs=n("node:fs");'
-    'const root=process.env.LOCALAPPDATA?path.join(process.env.LOCALAPPDATA,"cursor-agent"):"";'
-    'const scCmd=root?path.join(root,"sc.cmd"):"";'
+    'const cp=n("node:child_process"),path=n("node:path"),fs=n("node:fs"),os=n("node:os");'
+    'const root="win32"===process.platform'
+    '?path.join(process.env.LOCALAPPDATA||"","cursor-agent")'
+    ':path.join(os.homedir(),".local","share","cursor-agent");'
+    'const scCmd=path.join(root,"win32"===process.platform?"sc.cmd":"sc");'
     'const env=Object.assign({},process.env,{PYTHONUTF8:"1",PYTHONIOENCODING:"utf-8"});'
     "const result=yield new Promise((resolve)=>{let out=\"\",err=\"\",cmd,args,opts;"
     "if(scCmd&&fs.existsSync(scCmd)){cmd=scCmd;args=[sub];opts={env,shell:!0}}"
-    'else{cmd=process.env.AGENTCLI_PYTHON||"python";args=["-m","sc",sub];opts={env,shell:!1}}'
+    'else{cmd=process.env.PATCHER_PYTHON||process.env.AGENTCLI_PYTHON||("win32"===process.platform?"python":"python3");'
+    'args=["-m","sc",sub];opts={env,shell:!1}}'
     "const p=cp.spawn(cmd,args,opts);"
     'p.stdout&&p.stdout.on("data",(d)=>{out+=d.toString()});'
     'p.stderr&&p.stderr.on("data",(d)=>{err+=d.toString()});'

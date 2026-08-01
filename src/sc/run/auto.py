@@ -93,21 +93,25 @@ def _spawn_background_auto(parent_pid: Optional[int]) -> int:
 
     from sc.run.status_store import status_json_path
 
-    creation = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
-    creation |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
     log_path = sc_home_dir() / "sc_auto.log"
     log_f = open(log_path, "a", encoding="utf-8")  # noqa: SIM115
     args = [sys.executable, "-X", "utf8", "-m", "sc", "auto", "--fg"]
     if parent_pid:
         args.extend(["--parent", str(parent_pid)])
-    subprocess.Popen(
-        args,
-        creationflags=creation,
-        close_fds=True,
-        stdout=log_f,
-        stderr=log_f,
-        env=utf8_env(),
-    )
+    kwargs = {
+        "args": args,
+        "close_fds": True,
+        "stdout": log_f,
+        "stderr": log_f,
+        "env": utf8_env(),
+    }
+    if os.name == "nt":
+        creation = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+        creation |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        kwargs["creationflags"] = creation
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen(**kwargs)
     time.sleep(0.4)
     print(f"已后台启动实例 → {inst.instances_json_path()}")
     print(f"状态: {status_json_path()}  日志: {log_path}")
@@ -115,7 +119,7 @@ def _spawn_background_auto(parent_pid: Optional[int]) -> int:
 
 
 def cmd_auto(*, foreground: bool = False, parent_pid: Optional[int] = None) -> int:
-    if not foreground and os.name == "nt":
+    if not foreground:
         return _spawn_background_auto(parent_pid)
     from sc.run.autoloop import run_auto_foreground
 

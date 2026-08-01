@@ -4,15 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "patcher"
-version = "2.4.6"
+version = "2.5.0"
 description = "Patcher：Cursor/Qoder CLI 补丁管理，移除 Win10 警告、Cursor Agent auth 热更新与 /sc 便携换号"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.11"
+requires-python = ">=3.8"
 authors = [
     { name = "nichengfuben" },
 ]
-keywords = ["cli", "patch", "qoder", "cursor-agent", "sc", "windows"]
+keywords = ["cli", "patch", "qoder", "cursor-agent", "sc", "windows", "linux", "macos"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -21,9 +21,13 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Utilities",
 ]
 
@@ -33,6 +37,7 @@ dependencies = [
     "questionary>=2.0.0",
     "platformdirs>=4.0.0",
     "pydantic>=2.0.0",
+    "tomli>=2.0.0; python_version < '3.11'",
     "tomli-w>=1.0.0",
     "loguru>=0.7.0",
 ]
@@ -66,14 +71,14 @@ pythonpath = ["src"]
 addopts = "-v --tb=short"
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py38"
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.8"
 strict = true
 warn_return_any = true
 warn_unused_configs = true

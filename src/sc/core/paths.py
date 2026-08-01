@@ -6,6 +6,7 @@ import os
 import platform
 import shutil
 from pathlib import Path
+from typing import Optional
 
 
 def sc_home_dir() -> Path:
@@ -14,17 +15,14 @@ def sc_home_dir() -> Path:
 
 
 def cursor_auth_dir() -> Path:
-    """cursor-agent ``auth.json`` 所在目录（平台相关，勿与 SC 配置混放）。"""
-    system = platform.system()
-    if system == "Windows":
+    """cursor-agent ``auth.json`` 目录（与 JS hot-auth 对齐）。"""
+    if platform.system() == "Windows":
         appdata = os.environ.get("APPDATA") or str(
             Path.home() / "AppData" / "Roaming"
         )
         return Path(appdata) / "Cursor"
-    if system == "Darwin":
-        return Path.home() / ".cursor"
-    xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(xdg) / "cursor"
+    # Linux / macOS：JS 非 win32 一律 ~/.cursor
+    return Path.home() / ".cursor"
 
 
 def cursor_config_dir() -> Path:
@@ -67,8 +65,7 @@ def migrate_legacy_sc_home() -> None:
             pass
 
 
-def find_cursor_agent_root() -> Path | None:
-    """``%LOCALAPPDATA%/cursor-agent`` 安装根（含 versions/）。"""
+def _windows_agent_root() -> Optional[Path]:
     local = os.environ.get("LOCALAPPDATA")
     if local:
         root = Path(local) / "cursor-agent"
@@ -78,8 +75,53 @@ def find_cursor_agent_root() -> Path | None:
     return home if home.is_dir() else None
 
 
-def find_cursor_agent_bundle() -> Path | None:
-    """最新 version 目录（含 index.js / node.exe）。"""
+def _unix_share_root() -> Path:
+    return Path.home() / ".local" / "share" / "cursor-agent"
+
+
+def _root_from_symlink(link: Path) -> Optional[Path]:
+    """``~/.local/bin/agent`` → ``.../versions/<ver>/cursor-agent`` → share root。"""
+    try:
+        if not link.exists():
+            return None
+        target = link.resolve()
+    except OSError:
+        return None
+    # .../versions/<ver>/cursor-agent[.bin]
+    if target.parent.name and target.parent.parent.name == "versions":
+        root = target.parent.parent.parent
+        return root if root.is_dir() else None
+    if (target / "versions").is_dir():
+        return target
+    return None
+
+
+def _unix_agent_root() -> Optional[Path]:
+    share = _unix_share_root()
+    if share.is_dir():
+        return share
+    for name in ("cursor-agent", "agent"):
+        root = _root_from_symlink(Path.home() / ".local" / "bin" / name)
+        if root is not None:
+            return root
+    return None
+
+
+def find_cursor_agent_root() -> Optional[Path]:
+    """安装根（含 ``versions/``）：Win=%LOCALAPPDATA%/cursor-agent；Unix=~/.local/share/cursor-agent。"""
+    if platform.system() == "Windows":
+        return _windows_agent_root()
+    return _unix_agent_root()
+
+
+def _version_sort_key(p: Path) -> tuple:
+    parts = p.name.split("-")
+    date = parts[0] if parts else ""
+    return date, p.name
+
+
+def find_cursor_agent_bundle() -> Optional[Path]:
+    """最新 version 目录（含 index.js；Win 可有 node.exe，Unix 可有 node / cursor-agent.bin）。"""
     root = find_cursor_agent_root()
     if root is None:
         return None
@@ -91,11 +133,5 @@ def find_cursor_agent_bundle() -> Path | None:
     dirs = [p for p in versions.iterdir() if p.is_dir() and (p / "index.js").exists()]
     if not dirs:
         return None
-
-    def _key(p: Path) -> tuple:
-        parts = p.name.split("-")
-        date = parts[0] if parts else ""
-        return date, p.name
-
-    dirs.sort(key=_key, reverse=True)
+    dirs.sort(key=_version_sort_key, reverse=True)
     return dirs[0]

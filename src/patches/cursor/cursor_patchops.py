@@ -32,15 +32,12 @@ from patches.cursor.cursor_launchers import (
     _AG_CMD,
     _BOOT_BLOCK,
     _CURSOR_AGENT_CMD_TAIL,
-    _SC_AUTOBOOT_PS1,
-    _SC_CMD,
-    ensure_sc_config_from_client,
-    sc_ps1,
-    sc_statusline_cmd,
+    patch_unix_wrapper,  # noqa: F401 — re-export
+    rollback_unix_wrapper,  # noqa: F401 — re-export
+    write_script,
 )
-from sc.cli_config import merge_status_line
-from sc.core.paths import find_cursor_agent_bundle, find_cursor_agent_root
-from utils.paths import get_project_root
+from sc.core.paths import find_cursor_agent_bundle
+
 
 def index_js(bundle_dir: Path) -> Path:
     return bundle_dir / "index.js"
@@ -107,10 +104,10 @@ def patch_compile_cache_ps1(
         bak = path.with_suffix(path.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
         bak.write_text(text, encoding="utf-8")
         backups.append(bak)
-        path.write_text(
+        write_script(
+            path,
             text.replace(_COMPILE_CACHE_OLD, _COMPILE_CACHE_NEW, 1),
-            encoding="utf-8",
-            newline="\n",
+            crlf=False,
         )
         files.append(path)
         logger.info("Disabled NODE_COMPILE_CACHE in {}", path)
@@ -290,11 +287,14 @@ def _strip_slash(bundle_dir: Path, dry_run: bool) -> tuple[int, list[Path], list
     return hits, files, backups
 
 def assert_js_syntax(path: Path, source: str) -> None:
-    import subprocess
-    import tempfile
-
     node = find_cursor_agent_bundle()
-    node_exe = (node / "node.exe") if node and (node / "node.exe").exists() else Path("node")
+    node_exe = Path("node")
+    if node is not None:
+        for name in ("node.exe", "node"):
+            cand = node / name
+            if cand.exists():
+                node_exe = cand
+                break
     with tempfile.NamedTemporaryFile(
         "w", suffix=".js", delete=False, encoding="utf-8"
     ) as tmp:
@@ -313,13 +313,13 @@ def assert_js_syntax(path: Path, source: str) -> None:
         err = (proc.stderr or proc.stdout or "").strip()
         raise RuntimeError(f"JS syntax check failed on {path.name}: {err}")
 
+
 def patch_boot_cmd(root: Path, dry_run: bool) -> tuple[bool, Optional[Path], Optional[Path]]:
     cmd = root / "cursor-agent.cmd"
     if not cmd.exists():
         return False, None, None
     text = cmd.read_text(encoding="utf-8", errors="ignore")
     boot = _BOOT_BLOCK if _BOOT_BLOCK.endswith("\n") else _BOOT_BLOCK + "\n"
-    # 完整重写：boot + no-terminate 启动尾（避免 Terminate batch job）
     new_text = (
         "@echo off\r\n"
         "setlocal EnableExtensions\r\n"
@@ -334,15 +334,15 @@ def patch_boot_cmd(root: Path, dry_run: bool) -> tuple[bool, Optional[Path], Opt
         return True, None, None
     bak = cmd.with_suffix(cmd.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
     bak.write_text(text, encoding="utf-8")
-    cmd.write_text(new_text, encoding="utf-8", newline="")
+    write_script(cmd, new_text, crlf=True)
     logger.info("Patched cursor-agent.cmd boot+no-terminate → {}", cmd)
     return True, cmd, bak
+
 
 def patch_launchers(root: Path, dry_run: bool) -> tuple[bool, list[Path], list[Path]]:
     """写入 ag.cmd / agent.cmd（no-terminate），与 cursor-agent.cmd 对齐。"""
     files: list[Path] = []
     backups: list[Path] = []
-    wanted = _AG_CMD.replace("\n", "\r\n")
     changed = False
     for name in ("ag.cmd", "agent.cmd"):
         path = root / name
@@ -357,7 +357,7 @@ def patch_launchers(root: Path, dry_run: bool) -> tuple[bool, list[Path], list[P
         bak = path.with_suffix(path.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
         bak.write_text(old, encoding="utf-8")
         backups.append(bak)
-        path.write_text(wanted, encoding="utf-8", newline="")
+        write_script(path, _AG_CMD, crlf=True)
         files.append(path)
         logger.info("Patched {} no-terminate", name)
     return changed or bool(files), files, backups

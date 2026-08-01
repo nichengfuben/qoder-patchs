@@ -59,24 +59,34 @@ python main.py rollback cursor-agent
 
 ### `cursor-agent` 做了什么
 
-逆向 `%LOCALAPPDATA%\cursor-agent\`：
+安装根（官方布局）：
+
+| 平台 | Agent 根 | 入口 |
+|------|----------|------|
+| Windows | `%LOCALAPPDATA%\cursor-agent\` | `cursor-agent.cmd` → `cursor-agent.ps1` → `versions/<ver>/node.exe` |
+| Linux / macOS | `~/.local/share/cursor-agent/` | `~/.local/bin/{agent,cursor-agent}` → `versions/<ver>/cursor-agent` |
 
 - **Auth 热读**（`index.js`）：
   - AuthStorage / keychain：去掉缓存短路，每次读盘
   - 禁用 ephemeral 与 apiKeyOverride
   - 每次设 `Authorization` 前强制覆盖 Bearer
-  - 请求时写 `%APPDATA%\Cursor\agentcli-last-bearer.json` 便于对照
-  - 禁用 `cursor-agent.ps1` 的 `NODE_COMPILE_CACHE`
+  - 请求时写 `agentcli-last-bearer.json`（与 `auth.json` 同目录）便于对照
+  - Windows：禁用 `cursor-agent.ps1` 的 `NODE_COMPILE_CACHE`
+- **启动器**：Win 装 `sc.cmd` / `sc-statusline.cmd` / `sc-autoboot.ps1`；Unix 装 `sc` / `sc-statusline` / `sc-autoboot.sh`，并把版本目录内 `cursor-agent` 包装为 shell（真身 → `cursor-agent.bin`）
 - **statusLine**：leader auto 写 `sc_instances.json`；任意实例只读刷新用量/`#`
-- **配置**：只读 `~/.cursor/config.json`（不硬编码）。可选 `PATCHER_SC_CONFIG_SRC` / `AGENTCLI_SC_CONFIG_SRC` 播种
+- **配置**：只读 `~/.cursor/config.json`（不硬编码）。可选 `PATCHER_CONFIG` / `AGENTCLI_SC_CONFIG_SRC` 播种
 
-应用后**必须完全退出并重启** `ag`。换号后对照：
-`sc status` 的 `token … sub=` ≡ `agentcli-last-bearer.json` 的 `sub`。
+应用后**必须完全退出并重启** `ag` / `agent`。`agent update` 后需重新 `apply cursor-agent`。  
+换号后对照：`sc status` 的 `token … sub=` ≡ `agentcli-last-bearer.json` 的 `sub`。
 
 ### 配置与状态
 
-`auth.json`：Windows `%APPDATA%\Cursor\`；macOS/Linux 见平台 auth 目录  
-`config.json` / `sc_status.json` / `sc_auto.*` / 实例心跳：`%USERPROFILE%\.cursor\`（即 `~/.cursor`）
+`auth.json`（与 JS hot-auth 对齐）：
+
+- Windows：`%APPDATA%\Cursor\`
+- Linux / macOS：`~/.cursor\`
+
+`config.json` / `sc_status.json` / `sc_auto.*` / 实例心跳：一律 `~/.cursor`
 
 ```bash
 sc status          # 配置 / 在线实例 / 用量 / leader

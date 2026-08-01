@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Cursor Agent launcher scripts and SC wiring."""
+"""Cursor Agent launcher scripts and SC wiring (Windows + Unix)."""
 
 import json
 import os
@@ -70,6 +70,8 @@ set "SCRIPT_DIR=%~dp0"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%sc.ps1" %*
 """
 
+_UNIX_WRAPPER_MARKER = "# agentcli-sc-auto-boot"
+
 
 def sc_ps1(src_dir: Path) -> str:
     src = str(src_dir).replace("'", "''")
@@ -102,6 +104,122 @@ def sc_statusline_cmd(src_dir: Path) -> str:
     )
 
 
+def _bash_py_env(src_dir: Path) -> str:
+    src = str(src_dir).replace("'", "'\"'\"'")
+    return f"""export PYTHONUTF8=1
+export PYTHONIOENCODING=utf-8
+if [ -n "${{PATCHER_SRC:-}}" ]; then export PYTHONPATH="$PATCHER_SRC"
+elif [ -n "${{AGENTCLI_PATCHS_SRC:-}}" ]; then export PYTHONPATH="$AGENTCLI_PATCHS_SRC"
+else export PYTHONPATH='{src}'
+fi
+if [ -n "${{PATCHER_PYTHON:-}}" ]; then PY="$PATCHER_PYTHON"
+elif [ -n "${{AGENTCLI_PYTHON:-}}" ]; then PY="$AGENTCLI_PYTHON"
+else PY=python3
+fi
+command -v "$PY" >/dev/null 2>&1 || PY=python
+"""
+
+
+def sc_sh(src_dir: Path) -> str:
+    return (
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        + _bash_py_env(src_dir)
+        + 'exec "$PY" -X utf8 -m sc "$@"\n'
+    )
+
+
+def sc_statusline_sh(src_dir: Path) -> str:
+    return (
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        + _bash_py_env(src_dir)
+        + 'exec "$PY" -X utf8 -m sc.statusline_fast\n'
+    )
+
+
+def sc_autoboot_sh() -> str:
+    return r"""#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+SC="$ROOT/sc"
+[ -x "$SC" ] || exit 0
+INST="${HOME}/.cursor/sc_instances.json"
+if [ -f "$INST" ]; then
+  HB="$(python3 -c "
+import json,time
+from pathlib import Path
+p=Path.home()/'.cursor'/'sc_instances.json'
+try:
+ d=json.loads(p.read_text(encoding='utf-8'))
+ lid=d.get('leader_id')
+ info=(d.get('instances') or {}).get(lid) or {}
+ hb=float(info.get('heartbeat_at') or 0)
+ print(hb)
+except Exception:
+ print(0)
+" 2>/dev/null || true)"
+  NOW="$(date +%s)"
+  if [ -n "$HB" ] && [ "$HB" != "0" ]; then
+    AGE=$((NOW - ${HB%.*}))
+    if [ "$AGE" -lt 10 ]; then exit 0; fi
+  fi
+fi
+nohup "$SC" auto --fg >/dev/null 2>&1 &
+"""
+
+
+def unix_agent_wrapper() -> str:
+    """versions/<ver>/cursor-agent shell：boot sc auto 后 exec cursor-agent.bin。"""
+    return f"""#!/usr/bin/env bash
+{_UNIX_WRAPPER_MARKER}
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$DIR/../.." && pwd)"
+unset NODE_COMPILE_CACHE || true
+if [ -x "$ROOT/sc-autoboot.sh" ]; then
+  "$ROOT/sc-autoboot.sh" || true
+fi
+REAL="$DIR/cursor-agent.bin"
+if [ -x "$REAL" ]; then
+  exec "$REAL" "$@"
+fi
+if [ -x "$DIR/node" ] && [ -f "$DIR/index.js" ]; then
+  exec "$DIR/node" "$DIR/index.js" "$@"
+fi
+echo "cursor-agent: missing cursor-agent.bin or node" >&2
+exit 1
+"""
+
+
+def install_win_launchers(root: Path, src: Path) -> list[Path]:
+    paths = [
+        (root / "sc.cmd", _SC_CMD, True),
+        (root / "sc.ps1", sc_ps1(src), True),
+        (root / "sc-statusline.cmd", sc_statusline_cmd(src), True),
+        (root / "sc-autoboot.ps1", _SC_AUTOBOOT_PS1, True),
+    ]
+    out: list[Path] = []
+    for path, text, crlf in paths:
+        write_script(path, text, crlf=crlf)
+        out.append(path)
+    return out
+
+
+def install_unix_launchers(root: Path, src: Path) -> list[Path]:
+    paths = [
+        (root / "sc", sc_sh(src)),
+        (root / "sc-statusline", sc_statusline_sh(src)),
+        (root / "sc-autoboot.sh", sc_autoboot_sh()),
+    ]
+    out: list[Path] = []
+    for path, text in paths:
+        write_script(path, text, crlf=False)
+        chmod_exec(path)
+        out.append(path)
+    return out
+
+
 def find_client_config() -> Optional[Path]:
     env = (
         os.environ.get("PATCHER_CONFIG", "").strip()
@@ -129,3 +247,113 @@ def ensure_sc_config_from_client(*, force: bool = False) -> Optional[Path]:
     shutil.copy2(src, dst)
     logger.info("Copied SC config {} → {}", src, dst)
     return dst
+
+
+def write_script(path: Path, text: str, *, crlf: bool = False) -> None:
+    """无 BOM 写入；Windows 启动器用 CRLF，Unix shell 用 LF。"""
+    body = text.replace("\r\n", "\n")
+    if crlf:
+        body = body.replace("\n", "\r\n")
+    path.write_bytes(body.encode("utf-8"))
+
+
+def chmod_exec(path: Path) -> None:
+    try:
+        path.chmod(path.stat().st_mode | 0o111)
+    except OSError:
+        pass
+
+
+def patch_unix_wrapper(
+    bundle: Path, dry_run: bool
+) -> tuple[bool, list[Path], list[Path]]:
+    """versions/<ver>/cursor-agent → shell 包装；真身 → cursor-agent.bin。"""
+    agent = bundle / "cursor-agent"
+    real = bundle / "cursor-agent.bin"
+    files: list[Path] = []
+    backups: list[Path] = []
+    if not agent.exists() and not real.exists():
+        return False, files, backups
+    wanted = unix_agent_wrapper()
+    if agent.is_file():
+        text = agent.read_text(encoding="utf-8", errors="ignore")
+        if _UNIX_WRAPPER_MARKER in text and real.is_file():
+            if text.replace("\r\n", "\n") == wanted.replace("\r\n", "\n"):
+                return True, files, backups
+            if dry_run:
+                return True, files, backups
+            write_script(agent, wanted, crlf=False)
+            chmod_exec(agent)
+            files.append(agent)
+            return True, files, backups
+    if dry_run:
+        return True, files, backups
+    return _install_unix_wrapper(agent, real, wanted, files, backups)
+
+
+def _install_unix_wrapper(
+    agent: Path, real: Path, wanted: str, files: list[Path], backups: list[Path]
+) -> tuple[bool, list[Path], list[Path]]:
+    if agent.is_file() and _UNIX_WRAPPER_MARKER not in agent.read_text(
+        encoding="utf-8", errors="ignore"
+    ):
+        if real.exists():
+            real.unlink()
+        agent.replace(real)
+        backups.append(real)
+    write_script(agent, wanted, crlf=False)
+    chmod_exec(agent)
+    if real.exists():
+        chmod_exec(real)
+        files.append(real)
+    files.append(agent)
+    logger.info("Installed Unix cursor-agent wrapper → {}", agent)
+    return True, files, backups
+
+
+def rollback_unix_wrapper(bundle: Path) -> list[Path]:
+    agent = bundle / "cursor-agent"
+    real = bundle / "cursor-agent.bin"
+    files: list[Path] = []
+    if not real.is_file():
+        return files
+    if agent.is_file():
+        text = agent.read_text(encoding="utf-8", errors="ignore")
+        if _UNIX_WRAPPER_MARKER in text:
+            agent.unlink()
+            files.append(agent)
+    if not agent.exists():
+        real.replace(agent)
+        files.append(agent)
+    return files
+
+
+def rollback_boot_lines(text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    skip = False
+    for line in lines:
+        if BOOT_MARKER in line:
+            skip = True
+            continue
+        if skip:
+            if _should_end_boot_skip(line, out):
+                skip = False
+                continue
+            if _is_boot_skip_line(line):
+                continue
+            skip = False
+        out.append(line)
+    return "".join(out)
+
+
+def _is_boot_skip_line(line: str) -> bool:
+    s = line.strip()
+    return s.startswith(("REM ", "if exist", "start ")) or s in ("", ")")
+
+
+def _should_end_boot_skip(line: str, out: list[str]) -> bool:
+    s = line.strip()
+    if s == ")":
+        return True
+    return s == "" and "start" in "".join(out[-5:])

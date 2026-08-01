@@ -139,13 +139,32 @@ def _doctor_bearer(bearer_path: Path, sub: str | None) -> bool:
 
 
 def _doctor_ps1(ok: bool) -> bool:
-    ps1 = Path(os.environ.get("LOCALAPPDATA", "")) / "cursor-agent" / "cursor-agent.ps1"
-    if not ps1.is_file():
+    from sc.core.paths import find_cursor_agent_bundle, find_cursor_agent_root
+
+    root = find_cursor_agent_root()
+    bundle = find_cursor_agent_bundle()
+    if root is None:
         return ok
-    ps = ps1.read_text(encoding="utf-8", errors="ignore")
-    cache_off = "disable NODE_COMPILE_CACHE" in ps
-    print(f"  {'OK' if cache_off else 'FAIL'}: NODE_COMPILE_CACHE disabled in cursor-agent.ps1")
-    return ok and cache_off
+    if os.name == "nt":
+        ps1 = root / "cursor-agent.ps1"
+        if not ps1.is_file():
+            return ok
+        ps = ps1.read_text(encoding="utf-8", errors="ignore")
+        cache_off = "disable NODE_COMPILE_CACHE" in ps
+        print(f"  {'OK' if cache_off else 'FAIL'}: NODE_COMPILE_CACHE disabled in cursor-agent.ps1")
+        return ok and cache_off
+    sc_ok = (root / "sc").is_file() and (root / "sc-statusline").is_file()
+    print(f"  {'OK' if sc_ok else 'FAIL'}: Unix sc / sc-statusline launchers")
+    wrap_ok = False
+    if bundle is not None:
+        agent = bundle / "cursor-agent"
+        real = bundle / "cursor-agent.bin"
+        if agent.is_file() and real.is_file():
+            wrap_ok = "agentcli-sc-auto-boot" in agent.read_text(
+                encoding="utf-8", errors="ignore"
+            )
+    print(f"  {'OK' if wrap_ok else 'FAIL'}: Unix cursor-agent wrapper")
+    return ok and sc_ok and wrap_ok
 
 
 def cmd_addkey(key: str) -> int:

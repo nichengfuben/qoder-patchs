@@ -2,6 +2,17 @@
 
 本文件记录 Patcher（原 AgentCLI Patchs）的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.5.0
+
+- **跨平台**：`cursor-agent` 补丁支持 Windows / Linux / macOS
+  - 安装根：Win=`%LOCALAPPDATA%\cursor-agent`；Unix=`~/.local/share/cursor-agent`
+  - Unix：安装 `sc` / `sc-statusline` / `sc-autoboot.sh`；将 `versions/<ver>/cursor-agent` 包装为 shell（真实二进制 → `cursor-agent.bin`）
+  - `/sc` spawn 与 statusLine 命令按平台选择可执行文件
+  - `sc auto` 后台：Unix 使用 `start_new_session`
+- **auth 对齐**：Linux/macOS 的 `auth.json` 与 JS hot-auth 一致，固定为 `~/.cursor`（不再用 XDG `~/.config/cursor`）
+- **Python**：`requires-python >=3.8`；`<3.11` 使用 `tomli`；CI 矩阵 3.8–3.14
+- 启动器写入统一无 BOM；Unix shell 仅 LF，Windows `.cmd` 用 CRLF
+
 ## 2.4.6
 
 - **statusLine**：`sc-statusline.cmd` / `sc.ps1` 改为无 BOM 写入；UTF-8 BOM 会破坏 `@echo off`，导致 Agent 底栏刷出整段 cmd 回显并冻住时钟/进度条

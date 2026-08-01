@@ -14,9 +14,13 @@ Configuration lookup priority:
 from __future__ import annotations
 
 import os
-import tomllib
 from pathlib import Path
 from typing import Optional
+
+try:
+    import tomllib
+except ImportError:  # Python < 3.11
+    import tomli as tomllib  # type: ignore[no-redef]
 
 import tomli_w
 from loguru import logger

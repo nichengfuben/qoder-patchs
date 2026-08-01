@@ -208,12 +208,17 @@ def _build_temp_virgin_bundle(
 
 def _patch_paths(monkeypatch: pytest.MonkeyPatch, version: Path, root: Path) -> None:
     monkeypatch.setattr(ops, "find_cursor_agent_bundle", lambda: version)
-    monkeypatch.setattr(ops, "find_cursor_agent_root", lambda: root)
     monkeypatch.setattr(
         "patches.cursor.cursor_agent.find_cursor_agent_bundle", lambda: version
     )
     monkeypatch.setattr(
         "patches.cursor.cursor_agent.find_cursor_agent_root", lambda: root
+    )
+    monkeypatch.setattr(
+        "sc.core.paths.find_cursor_agent_bundle", lambda: version
+    )
+    monkeypatch.setattr(
+        "sc.core.paths.find_cursor_agent_root", lambda: root
     )
     monkeypatch.setattr(ops, "assert_js_syntax", lambda path, source: None)
 
@@ -258,3 +263,44 @@ def test_markers() -> None:
     assert STATUS_INTERVAL_MARKER.startswith("/*")
     assert FOOTER_KEEP_MARKER.startswith("/*")
     assert "agentcli-sc-auto-boot" in BOOT_MARKER
+
+
+def test_unix_wrapper_and_launchers(
+    virgin_index: str, virgin_uichunk: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, version, _index, _chunk = _build_temp_virgin_bundle(
+        tmp_path, virgin_index, virgin_uichunk
+    )
+    agent = version / "cursor-agent"
+    agent.write_bytes(b"\x7fELF fake-binary")
+    _patch_paths(monkeypatch, version, root)
+    monkeypatch.setattr(
+        "patches.cursor.cursor_agent._is_windows", lambda: False
+    )
+
+    from patches.cursor.cursor_agent import _install_sc_launchers
+
+    installed = _install_sc_launchers(root)
+    assert (root / "sc").is_file()
+    assert (root / "sc-statusline").is_file()
+    assert (root / "sc-autoboot.sh").is_file()
+    assert "sc.statusline_fast" in (root / "sc-statusline").read_text(encoding="utf-8")
+    assert not (root / "sc-statusline").read_bytes().startswith(b"\xef\xbb\xbf")
+    assert len(installed) == 3
+
+    ok, files, _ = ops.patch_unix_wrapper(version, dry_run=False)
+    assert ok
+    assert (version / "cursor-agent.bin").is_file()
+    wrap = (version / "cursor-agent").read_text(encoding="utf-8")
+    assert "agentcli-sc-auto-boot" in wrap
+    assert "cursor-agent.bin" in wrap
+
+    rolled = ops.rollback_unix_wrapper(version)
+    assert rolled
+    assert (version / "cursor-agent").read_bytes().startswith(b"\x7fELF")
+    assert not (version / "cursor-agent.bin").exists()
+
+
+def test_slash_inject_resolves_unix_sc_root() -> None:
+    assert '".local","share","cursor-agent"' in _SLASH_INJECT
+    assert '"sc.cmd":"sc"' in _SLASH_INJECT or '?"sc.cmd":"sc"' in _SLASH_INJECT

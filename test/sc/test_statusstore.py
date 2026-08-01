@@ -124,3 +124,33 @@ def test_stale_badge_when_auto_dead() -> None:
     )
     assert "STALE" in plain
     assert "42.0%" in plain
+
+
+def test_write_status_concurrent_no_raise(tmp_path, monkeypatch) -> None:
+    import threading
+    from pathlib import Path
+
+    from sc.run import status_store
+
+    monkeypatch.setattr(status_store, "sc_home_dir", lambda: tmp_path)
+    monkeypatch.setattr(status_store, "migrate_legacy_sc_home", lambda: None)
+    errors: list = []
+
+    def worker(i: int) -> None:
+        try:
+            for n in range(20):
+                status_store.write_status(total_pct=float(i), usage_seq=n, poll_n=n)
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors
+    st = status_store.read_status()
+    assert "total_pct" in st
+    assert (Path(tmp_path) / "sc_status.json").exists()
+    assert not (Path(tmp_path) / "sc_status.tmp").exists()
+

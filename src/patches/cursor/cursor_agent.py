@@ -4,8 +4,15 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Optional
 
 from loguru import logger
+
+
+def _is_windows() -> bool:
+    import os
+
+    return os.name == "nt"
 
 from core.patch_base import PatchBase, PatchMetadata, PatchResult, PatchStatus
 from patches.cursor.cursor_hotauth import (
@@ -23,12 +30,13 @@ from patches.cursor.cursor_hotauth import _COMPILE_CACHE_NEW, _COMPILE_CACHE_OLD
 from patches.cursor.cursor_chunks import _DISK_BEARER_OVERRIDE
 from patches.cursor.cursor_repls import _GET_ACCESS_NOCACHE, _REPLACEMENTS
 from patches.cursor.cursor_launchers import (
-    _SC_AUTOBOOT_PS1,
-    _SC_CMD,
+    _UNIX_WRAPPER_MARKER,
     ensure_sc_config_from_client,
     find_client_config,
-    sc_ps1,
-    sc_statusline_cmd,
+    install_unix_launchers,
+    install_win_launchers,
+    rollback_boot_lines,
+    write_script,
 )
 from patches.cursor import cursor_patchops as ops
 from sc.cli_config import merge_status_line
@@ -78,7 +86,7 @@ class CursorAgentPatch(PatchBase):
         issues: list[str] = []
         target = ops.resolve_bundle(bundle_dir)
         if target is None:
-            issues.append("未找到 %LOCALAPPDATA%\\cursor-agent\\versions\\*\\index.js")
+            issues.append("未找到 cursor-agent versions/*/index.js（Win/Unix 安装根）")
             return issues
         index = ops.index_js(target)
         if not index.exists():
@@ -86,7 +94,7 @@ class CursorAgentPatch(PatchBase):
         elif not index.is_file():
             issues.append(f"Target is not a file: {index}")
         if find_cursor_agent_root() is None:
-            issues.append("未找到 %LOCALAPPDATA%\\cursor-agent")
+            issues.append("未找到 cursor-agent 安装根")
         return issues
 
     def check(self, bundle_dir: Path) -> PatchStatus:
@@ -98,27 +106,10 @@ class CursorAgentPatch(PatchBase):
             return PatchStatus.UNKNOWN
         text = index.read_text(encoding="utf-8", errors="ignore")
         root = find_cursor_agent_root()
-        sc_ok = bool(root and (root / "sc.cmd").exists() and (root / "sc-statusline.cmd").exists())
-        hot_ok = MARKER in text and EPHEMERAL_NULL_MARKER in text and DISK_MARKER in text
-        interval_ok = any(
-            STATUS_INTERVAL_MARKER in p.read_text(encoding="utf-8", errors="ignore")
-            for p in target.glob("*.index.js")
-            if p.is_file()
-        )
-        footer_ok = any(
-            FOOTER_KEEP_MARKER in p.read_text(encoding="utf-8", errors="ignore")
-            for p in target.glob("*.index.js")
-            if p.is_file()
-        )
-        boot_ok = False
-        if root is not None:
-            boot_cmd = root / "cursor-agent.cmd"
-            if boot_cmd.exists():
-                boot_ok = BOOT_MARKER in boot_cmd.read_text(encoding="utf-8", errors="ignore")
-        slash_ok = len(ops.slash_chunks(target)) > 0
-        if hot_ok and sc_ok and boot_ok and slash_ok and interval_ok and footer_ok:
+        flags = _check_flags(target, root, text)
+        if all(flags.values()):
             return PatchStatus.APPLIED
-        if hot_ok or sc_ok or boot_ok or slash_ok or interval_ok or footer_ok:
+        if any(flags.values()):
             return PatchStatus.PARTIAL
         return PatchStatus.NOT_APPLIED
 
@@ -181,7 +172,52 @@ def _apply_patch(patch: CursorAgentPatch, bundle_dir: Path, dry_run: bool) -> Pa
     )
 
 
-def _apply_all_phases(index: Path, target: Path, root: Path | None) -> tuple[list[Path], list[Path], dict]:
+def _check_flags(target: Path, root: Optional[Path], text: str) -> dict:
+    hot_ok = MARKER in text and EPHEMERAL_NULL_MARKER in text and DISK_MARKER in text
+    interval_ok = any(
+        STATUS_INTERVAL_MARKER in p.read_text(encoding="utf-8", errors="ignore")
+        for p in target.glob("*.index.js")
+        if p.is_file()
+    )
+    footer_ok = any(
+        FOOTER_KEEP_MARKER in p.read_text(encoding="utf-8", errors="ignore")
+        for p in target.glob("*.index.js")
+        if p.is_file()
+    )
+    return {
+        "hot": hot_ok,
+        "sc": _sc_launchers_ok(root),
+        "boot": _boot_ok(root, target),
+        "slash": len(ops.slash_chunks(target)) > 0,
+        "interval": interval_ok,
+        "footer": footer_ok,
+    }
+
+
+def _sc_launchers_ok(root: Optional[Path]) -> bool:
+    if root is None:
+        return False
+    if _is_windows():
+        return (root / "sc.cmd").exists() and (root / "sc-statusline.cmd").exists()
+    return (root / "sc").exists() and (root / "sc-statusline").exists()
+
+
+def _boot_ok(root: Optional[Path], target: Path) -> bool:
+    if root is None:
+        return False
+    if _is_windows():
+        boot_cmd = root / "cursor-agent.cmd"
+        if not boot_cmd.exists():
+            return False
+        return BOOT_MARKER in boot_cmd.read_text(encoding="utf-8", errors="ignore")
+    agent = target / "cursor-agent"
+    real = target / "cursor-agent.bin"
+    if not agent.is_file() or not real.is_file():
+        return False
+    return _UNIX_WRAPPER_MARKER in agent.read_text(encoding="utf-8", errors="ignore")
+
+
+def _apply_all_phases(index: Path, target: Path, root: Optional[Path]) -> tuple:
     files: list[Path] = []
     backups: list[Path] = []
     stats = {"hot": 0, "slash": 0, "iv": 0, "ft": 0, "boot": False, "ag": False, "cfg": None}
@@ -191,6 +227,13 @@ def _apply_all_phases(index: Path, target: Path, root: Path | None) -> tuple[lis
         files.append(hot_file)
     if hot_bak:
         backups.append(hot_bak)
+    _apply_side_patches(target, root, files, backups, stats)
+    return files, backups, stats
+
+
+def _apply_side_patches(
+    target: Path, root: Optional[Path], files: list, backups: list, stats: dict
+) -> None:
     if root is not None:
         _, ps1_files, ps1_baks = ops.patch_compile_cache_ps1(root, dry_run=False)
         files.extend(ps1_files)
@@ -215,7 +258,14 @@ def _apply_all_phases(index: Path, target: Path, root: Path | None) -> tuple[lis
     if cfg_copied:
         files.append(cfg_copied)
     if root is not None:
-        files.extend(_install_sc_launchers(root))
+        _apply_root_launchers(root, target, files, backups, stats)
+
+
+def _apply_root_launchers(
+    root: Path, target: Path, files: list, backups: list, stats: dict
+) -> None:
+    files.extend(_install_sc_launchers(root))
+    if _is_windows():
         boot_ok, boot_file, boot_bak = ops.patch_boot_cmd(root, dry_run=False)
         stats["boot"] = boot_ok
         if boot_file:
@@ -227,28 +277,22 @@ def _apply_all_phases(index: Path, target: Path, root: Path | None) -> tuple[lis
         files.extend(ag_files)
         backups.extend(ag_baks)
         sl = root / "sc-statusline.cmd"
-        cfg_path = merge_status_line(str(sl.resolve()))
-        files.append(cfg_path)
-        logger.info("Wired statusLine → {}", cfg_path)
-    return files, backups, stats
-
-
-def _write_nobom(path: Path, text: str) -> None:
-    """写文本且禁止 UTF-8 BOM（BOM 会让 ``@echo off`` 失效，statusline 回显整段 cmd）。"""
-    path.write_bytes(text.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-8"))
+    else:
+        boot_ok, uw_files, uw_baks = ops.patch_unix_wrapper(target, dry_run=False)
+        stats["boot"] = boot_ok
+        files.extend(uw_files)
+        backups.extend(uw_baks)
+        sl = root / "sc-statusline"
+    cfg_path = merge_status_line(str(sl.resolve()))
+    files.append(cfg_path)
+    logger.info("Wired statusLine → {}", cfg_path)
 
 
 def _install_sc_launchers(root: Path) -> list[Path]:
     src = get_project_root() / "src"
-    cmd = root / "sc.cmd"
-    ps1 = root / "sc.ps1"
-    sl_cmd = root / "sc-statusline.cmd"
-    boot_ps1 = root / "sc-autoboot.ps1"
-    _write_nobom(cmd, _SC_CMD)
-    _write_nobom(ps1, sc_ps1(src))
-    _write_nobom(sl_cmd, sc_statusline_cmd(src))
-    _write_nobom(boot_ps1, _SC_AUTOBOOT_PS1)
-    return [cmd, ps1, sl_cmd, boot_ps1]
+    if _is_windows():
+        return install_win_launchers(root, src)
+    return install_unix_launchers(root, src)
 
 
 def _rollback_patch(patch: CursorAgentPatch, bundle_dir: Path, dry_run: bool) -> PatchResult:
@@ -305,38 +349,8 @@ def _rollback_chunks(target: Path) -> list[Path]:
     files.extend(iv_files)
     _, ft_files = ops.strip_footer_keep(target, dry_run=False)
     files.extend(ft_files)
+    files.extend(ops.rollback_unix_wrapper(target))
     return files
-
-
-def _rollback_boot_lines(text: str) -> str:
-    lines = text.splitlines(keepends=True)
-    out: list[str] = []
-    skip = False
-    for line in lines:
-        if BOOT_MARKER in line:
-            skip = True
-            continue
-        if skip:
-            if _should_end_boot_skip(line, out):
-                skip = False
-                continue
-            if _is_boot_skip_line(line):
-                continue
-            skip = False
-        out.append(line)
-    return "".join(out)
-
-
-def _is_boot_skip_line(line: str) -> bool:
-    s = line.strip()
-    return s.startswith(("REM ", "if exist", "start ")) or s in ("", ")")
-
-
-def _should_end_boot_skip(line: str, out: list[str]) -> bool:
-    s = line.strip()
-    if s == ")":
-        return True
-    return s == "" and "start" in "".join(out[-5:])
 
 
 def _rollback_root_launchers() -> list[Path]:
@@ -344,12 +358,16 @@ def _rollback_root_launchers() -> list[Path]:
     root = find_cursor_agent_root()
     if root is None:
         return files
-    cmd = root / "cursor-agent.cmd"
-    if cmd.exists() and BOOT_MARKER in cmd.read_text(encoding="utf-8", errors="ignore"):
-        text = cmd.read_text(encoding="utf-8", errors="ignore")
-        cmd.write_text(_rollback_boot_lines(text), encoding="utf-8")
-        files.append(cmd)
-    for name in ("sc.cmd", "sc.ps1", "sc-statusline.cmd", "sc-autoboot.ps1"):
+    if _is_windows():
+        cmd = root / "cursor-agent.cmd"
+        if cmd.exists() and BOOT_MARKER in cmd.read_text(encoding="utf-8", errors="ignore"):
+            text = cmd.read_text(encoding="utf-8", errors="ignore")
+            write_script(cmd, rollback_boot_lines(text), crlf=True)
+            files.append(cmd)
+        names = ("sc.cmd", "sc.ps1", "sc-statusline.cmd", "sc-autoboot.ps1")
+    else:
+        names = ("sc", "sc-statusline", "sc-autoboot.sh")
+    for name in names:
         p = root / name
         if p.exists():
             p.unlink()
