@@ -109,6 +109,32 @@ def test_usage_seq_forces_visible_refresh() -> None:
     assert "#7" in a and "#8" in b
 
 
+def test_narrow_width_keeps_clock() -> None:
+    """Agent render_width 偏窄时缩短进度条，不把时间裁成 …。"""
+    lines = format_status_lines(
+        {
+            "action": "ok",
+            "total_pct": 50.0,
+            "plan_status": "OK",
+            "usage_seq": 9,
+        },
+        model="Auto",
+        width=48,
+    )
+    plain = _strip(lines[0])
+    assert plain.startswith("SC")
+    assert "50.0%" in plain
+    assert re.search(r"\d{2}:\d{2}:\d{2}", plain)
+    assert not plain.endswith("…")
+    assert _visible_len_local(lines[0]) <= 48
+
+
+def _visible_len_local(s: str) -> int:
+    from sc.statusline_fast import _visible_len
+
+    return _visible_len(s)
+
+
 def test_stale_badge_when_auto_dead() -> None:
     plain = _strip(
         format_status_lines(

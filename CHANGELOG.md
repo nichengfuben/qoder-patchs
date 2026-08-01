@@ -7,6 +7,7 @@
 - **CLI**：应用/状态/回滞按补丁解析目标目录；`cursor-agent` 不再依赖 Qoder `bundle`（Linux 无 Qoder 时可直接打 Agent 补丁）
 - **CI**：`tree-sitter-language-pack` 仅在 Python ≥3.10 安装（该包不支持 3.8/3.9），修复 3.8 矩阵失败
 - **状态**：`interval`/`footer` UI 片段在当前 Agent 版本不存在时视为不适用，不再误报「部分应用」
+- **statusLine**：窄 `render_width` 时优先缩短进度条并保留 `HH:MM:SS`，避免时间被裁成 `…`
 
 ## 2.5.0
 

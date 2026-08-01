@@ -91,6 +91,17 @@ def _truncate_ansi(s: str, width: int) -> str:
     return "".join(plain) + "…\033[0m"
 
 
+def _fit_bar_width(fixed_visible: int, width: int, default: int = 30) -> int:
+    """按 Agent 给出的 render_width 收缩进度条，优先保住时钟。"""
+    if not width or width <= 24:
+        return default
+    # bar = "[" + n + "]"
+    avail = width - fixed_visible - 2
+    if avail >= default:
+        return default
+    return max(6, avail)
+
+
 def _is_transient_err(err_s: str) -> bool:
     low = err_s.lower()
     return (
@@ -101,7 +112,7 @@ def _is_transient_err(err_s: str) -> bool:
     )
 
 
-def _format_pull_line(d: Dict[str, Any], *, model: str) -> list[str]:
+def _format_pull_line(d: Dict[str, Any], *, model: str, width: int = 0) -> list[str]:
     dim = "\033[90m"
     cyan = "\033[36m"
     yellow = "\033[33m"
@@ -121,12 +132,17 @@ def _format_pull_line(d: Dict[str, Any], *, model: str) -> list[str]:
         line += f" {tick}"
     line += f" {dim}{clock}{reset}"
     if msg:
-        short = msg if len(msg) <= 28 else msg[:27] + "…"
+        budget = 28
+        if width and width > 24:
+            budget = max(8, width - _visible_len(line) - 1)
+        short = msg if len(msg) <= budget else msg[: max(0, budget - 1)] + "…"
         line += f" {yellow}{short}{reset}"
+    if width and width > 24 and _visible_len(line) > width:
+        line = _truncate_ansi(line, width)
     return [line]
 
 
-def _format_error_line(d: Dict[str, Any], *, model: str) -> list[str]:
+def _format_error_line(d: Dict[str, Any], *, model: str, width: int = 0) -> list[str]:
     dim = "\033[90m"
     cyan = "\033[36m"
     red = "\033[31m"
@@ -139,15 +155,25 @@ def _format_error_line(d: Dict[str, Any], *, model: str) -> list[str]:
     clock = time.strftime("%H:%M:%S")
     total = d.get("total_pct")
     badge, badge_color = _plan_badge(d)
-    bar = _bar(total)
-    usage = f"{bar} {_pct(total)}"
     if _is_transient_err(err_s):
-        line = f"{cyan}SC{reset} {badge_color}{badge}{reset} {usage}"
+        suffix = f" {_pct(total)}"
         if tick:
-            line += f" {tick}"
-        line += f" {dim}{clock}{reset}"
+            suffix += f" {tick}"
+        suffix += f" {dim}{clock}{reset}"
         if model:
-            line += f" {dim}{model}{reset}"
+            suffix += f" {dim}{model}{reset}"
+        prefix = f"{cyan}SC{reset} {badge_color}{badge}{reset} "
+        bar_w = _fit_bar_width(_visible_len(prefix) + _visible_len(suffix), width)
+        line = prefix + _bar(total, width=bar_w) + suffix
+        if width and width > 24 and _visible_len(line) > width and model:
+            suffix = f" {_pct(total)}"
+            if tick:
+                suffix += f" {tick}"
+            suffix += f" {dim}{clock}{reset}"
+            bar_w = _fit_bar_width(_visible_len(prefix) + _visible_len(suffix), width)
+            line = prefix + _bar(total, width=bar_w) + suffix
+        if width and width > 24 and _visible_len(line) > width:
+            line = _truncate_ansi(line, width)
         return [line]
     if len(err_s) > 20:
         err_s = err_s[:19] + "…"
@@ -155,10 +181,12 @@ def _format_error_line(d: Dict[str, Any], *, model: str) -> list[str]:
     if tick:
         line += f" {tick}"
     line += f" {dim}{clock}{reset}"
+    if width and width > 24 and _visible_len(line) > width:
+        line = _truncate_ansi(line, width)
     return [line]
 
 
-def _format_normal_line(d: Dict[str, Any], *, model: str) -> list[str]:
+def _format_normal_line(d: Dict[str, Any], *, model: str, width: int = 0) -> list[str]:
     dim = "\033[90m"
     cyan = "\033[36m"
     reset = "\033[0m"
@@ -167,14 +195,30 @@ def _format_normal_line(d: Dict[str, Any], *, model: str) -> list[str]:
     tick = f"#{tick_n}" if tick_n is not None else ""
     clock = time.strftime("%H:%M:%S")
     badge, badge_color = _plan_badge(d)
-    bar = _bar(total)
-    usage = f"{bar} {_pct(total)}"
-    line = f"{cyan}SC{reset} {badge_color}{badge}{reset} {usage}"
-    if tick:
-        line += f" {tick}"
-    line += f" {dim}{clock}{reset}"
-    if model:
-        line += f" {dim}{model}{reset}"
+    prefix = f"{cyan}SC{reset} {badge_color}{badge}{reset} "
+    pct = f" {_pct(total)}"
+    tick_s = f" {tick}" if tick else ""
+    clock_s = f" {dim}{clock}{reset}"
+    model_part = f" {dim}{model}{reset}" if model else ""
+
+    def _build(bar_w: int, with_model: bool, with_bar: bool) -> str:
+        mid = _bar(total, width=bar_w) if with_bar else ""
+        tail = pct + tick_s + clock_s + (model_part if with_model else "")
+        return prefix + mid + tail
+
+    fixed = _visible_len(prefix) + _visible_len(pct + tick_s + clock_s + model_part)
+    bar_w = _fit_bar_width(fixed, width)
+    line = _build(bar_w, True, True)
+    # 仍超宽：丢 model → 再缩条 → 去掉条，始终优先保留 HH:MM:SS
+    if width and width > 24 and _visible_len(line) > width and model_part:
+        bar_w = _fit_bar_width(
+            _visible_len(prefix) + _visible_len(pct + tick_s + clock_s), width
+        )
+        line = _build(bar_w, False, True)
+    if width and width > 24 and _visible_len(line) > width:
+        line = _build(0, False, False)
+    if width and width > 24 and _visible_len(line) > width:
+        line = _truncate_ansi(line, width)
     return [line]
 
 
@@ -192,15 +236,11 @@ def format_status_lines(
     _ = (cwd, mode, context_pct)
     action = str(d.get("action") or "idle")
     if action in ("pulling", "switching"):
-        lines = _format_pull_line(d, model=model)
+        lines = _format_pull_line(d, model=model, width=width)
     elif action == "error":
-        lines = _format_error_line(d, model=model)
+        lines = _format_error_line(d, model=model, width=width)
     else:
-        lines = _format_normal_line(d, model=model)
-    if width and width > 24:
-        lines = [
-            ln if _visible_len(ln) <= width else _truncate_ansi(ln, width) for ln in lines
-        ]
+        lines = _format_normal_line(d, model=model, width=width)
     return lines
 
 
