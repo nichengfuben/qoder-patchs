@@ -1,0 +1,11 @@
+# Runtime deps for Patcher (Python >=3.8). Prefer: pip install -e .
+# Keep floors aligned with pyproject.toml; bump there first when changing.
+
+typer>=0.12.0
+rich>=13.0.0
+questionary>=2.0.0
+platformdirs>=4.0.0
+pydantic>=2.0.0
+tomli>=2.0.0; python_version < "3.11"
+tomli-w>=1.0.0
+loguru>=0.7.0
