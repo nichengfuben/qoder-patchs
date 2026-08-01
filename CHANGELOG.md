@@ -5,6 +5,7 @@
 ## 2.5.1
 
 - **CLI**：应用/状态/回滞按补丁解析目标目录；`cursor-agent` 不再依赖 Qoder `bundle`（Linux 无 Qoder 时可直接打 Agent 补丁）
+- **CI**：`tree-sitter-language-pack` 仅在 Python ≥3.10 安装（该包不支持 3.8/3.9），修复 3.8 矩阵失败
 
 ## 2.5.0
 
