@@ -27,7 +27,11 @@ from patches.cursor.cursor_hotauth import (
 )
 from patches.cursor.cursor_hotauth import BOOT_MARKER
 from patches.cursor.cursor_hotauth import _COMPILE_CACHE_NEW, _COMPILE_CACHE_OLD
-from patches.cursor.cursor_chunks import _DISK_BEARER_OVERRIDE
+from patches.cursor.cursor_chunks import (
+    _DISK_BEARER_OVERRIDE,
+    _FOOTER_KEEP_OLD,
+    _STATUS_INTERVAL_OLD,
+)
 from patches.cursor.cursor_repls import _GET_ACCESS_NOCACHE, _REPLACEMENTS
 from patches.cursor.cursor_launchers import (
     _UNIX_WRAPPER_MARKER,
@@ -172,25 +176,36 @@ def _apply_patch(patch: CursorAgentPatch, bundle_dir: Path, dry_run: bool) -> Pa
     )
 
 
+def _uichunk_texts(target: Path) -> list[str]:
+    texts: list[str] = []
+    for p in target.glob("*.index.js"):
+        if not p.is_file():
+            continue
+        try:
+            texts.append(p.read_text(encoding="utf-8", errors="ignore"))
+        except OSError:
+            continue
+    return texts
+
+
+def _optional_uichunk_ok(texts: list[str], marker: str, old: str) -> bool:
+    """已打上标记，或本版本根本没有对应片段（不适用）→ 视为通过。"""
+    if any(marker in t for t in texts):
+        return True
+    return not any(old in t for t in texts)
+
+
 def _check_flags(target: Path, root: Optional[Path], text: str) -> dict:
     hot_ok = MARKER in text and EPHEMERAL_NULL_MARKER in text and DISK_MARKER in text
-    interval_ok = any(
-        STATUS_INTERVAL_MARKER in p.read_text(encoding="utf-8", errors="ignore")
-        for p in target.glob("*.index.js")
-        if p.is_file()
-    )
-    footer_ok = any(
-        FOOTER_KEEP_MARKER in p.read_text(encoding="utf-8", errors="ignore")
-        for p in target.glob("*.index.js")
-        if p.is_file()
-    )
+    chunks = _uichunk_texts(target)
     return {
         "hot": hot_ok,
         "sc": _sc_launchers_ok(root),
         "boot": _boot_ok(root, target),
         "slash": len(ops.slash_chunks(target)) > 0,
-        "interval": interval_ok,
-        "footer": footer_ok,
+        # interval/footer 依赖特定 UI chunk；新版本对不上时不算失败
+        "interval": _optional_uichunk_ok(chunks, STATUS_INTERVAL_MARKER, _STATUS_INTERVAL_OLD),
+        "footer": _optional_uichunk_ok(chunks, FOOTER_KEEP_MARKER, _FOOTER_KEEP_OLD),
     }
 
 

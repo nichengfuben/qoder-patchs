@@ -304,3 +304,41 @@ def test_unix_wrapper_and_launchers(
 def test_slash_inject_resolves_unix_sc_root() -> None:
     assert '".local","share","cursor-agent"' in _SLASH_INJECT
     assert '"sc.cmd":"sc"' in _SLASH_INJECT or '?"sc.cmd":"sc"' in _SLASH_INJECT
+
+
+def test_check_applied_when_optional_uichunk_absent(
+    virgin_index: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """本版本没有 interval/footer 片段时，核心补丁齐全应报 APPLIED 而非 PARTIAL。"""
+    from patches.cursor.cursor_agent import (
+        CursorAgentPatch,
+        _UNIX_WRAPPER_MARKER,
+        apply_hot_auth_replacements,
+    )
+    from patches.cursor.cursor_hotauth import MARKER
+
+    root = tmp_path / "cursor-agent"
+    version = root / "versions" / "2026.07.23-test"
+    version.mkdir(parents=True)
+    index = version / "index.js"
+    patched, _ = apply_hot_auth_replacements(virgin_index)
+    index.write_text(patched, encoding="utf-8")
+    # 无 interval/footer OLD 片段的 UI chunk；仅含已注入的 /sc
+    (version / "1931.index.js").write_text(
+        _SLASH_INJECT + 'ue.push({id:"plugin",title:"Plugin"}',
+        encoding="utf-8",
+    )
+    (root / "sc").write_text("#!/bin/sh\n", encoding="utf-8")
+    (root / "sc-statusline").write_text("#!/bin/sh\n", encoding="utf-8")
+    (version / "cursor-agent.bin").write_bytes(b"\x7fELF")
+    (version / "cursor-agent").write_text(
+        f"#!/bin/sh\n{_UNIX_WRAPPER_MARKER}\nexec \"$0.bin\" \"$@\"\n",
+        encoding="utf-8",
+    )
+    _patch_paths(monkeypatch, version, root)
+    monkeypatch.setattr(
+        "patches.cursor.cursor_agent._is_windows", lambda: False
+    )
+
+    assert MARKER in index.read_text(encoding="utf-8")
+    assert CursorAgentPatch().check(version) == PatchStatus.APPLIED
