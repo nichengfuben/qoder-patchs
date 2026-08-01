@@ -306,6 +306,37 @@ def test_slash_inject_resolves_unix_sc_root() -> None:
     assert '"sc.cmd":"sc"' in _SLASH_INJECT or '?"sc.cmd":"sc"' in _SLASH_INJECT
 
 
+def test_nudge_inject_and_strip(tmp_path: Path) -> None:
+    from patches.cursor.cursor_chunks import NUDGE_MARKER, _NUDGE_ANCHOR, _NUDGE_INJECT
+    from patches.cursor import cursor_patchops as ops
+
+    version = tmp_path / "versions" / "t"
+    version.mkdir(parents=True)
+    chunk = version / "5305.index.js"
+    chunk.write_text(
+        'br=(0,c.useMemo)((()=>({submitMessage:(e,t)=>{}})),[br])'
+        + _NUDGE_ANCHOR
+        + ",zz=1",
+        encoding="utf-8",
+    )
+    hits, files, _ = ops._inject_nudge(version, dry_run=False)
+    assert hits >= 1 and files
+    text = chunk.read_text(encoding="utf-8")
+    assert NUDGE_MARKER in text and _NUDGE_INJECT in text
+    assert "sc_nudge.json" in text and "submitMessage" in text
+    sh, sf, _ = ops._strip_nudge(version, dry_run=False)
+    assert sh >= 1 and sf
+    assert NUDGE_MARKER not in chunk.read_text(encoding="utf-8")
+    assert _NUDGE_ANCHOR in chunk.read_text(encoding="utf-8")
+
+
+def test_disk_bearer_uses_mutable_binding() -> None:
+    from patches.cursor.cursor_chunks import _DISK_BEARER_OVERRIDE
+
+    assert "_agentcliBearer=_j.accessToken" in _DISK_BEARER_OVERRIDE
+    assert "l=_j.accessToken" not in _DISK_BEARER_OVERRIDE
+
+
 def test_check_applied_when_optional_uichunk_absent(
     virgin_index: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

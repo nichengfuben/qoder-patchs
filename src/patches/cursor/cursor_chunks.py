@@ -110,7 +110,27 @@ _SLASH_INJECT = (
 )
 
 # 每次 Authorization 写入前强制读盘；优先 process.getBuiltinModule（webpack 内 require 可能不可用）
+# 注意：外层常是 const l=yield...，不能给 l 赋值；写入 _agentcliBearer。
 _DISK_BEARER_OVERRIDE = (
+    '{/*agentcli-hot-auth-disk*/try{const _fs=(process.getBuiltinModule&&'
+    '(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||'
+    'require("node:fs");const _path=(process.getBuiltinModule&&'
+    '(process.getBuiltinModule("node:path")||process.getBuiltinModule("path")))||'
+    'require("node:path");const _os=(process.getBuiltinModule&&'
+    '(process.getBuiltinModule("node:os")||process.getBuiltinModule("os")))||'
+    'require("node:os");const _dir="win32"===process.platform?_path.join('
+    'process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor")'
+    ':_path.join(_os.homedir(),".cursor");const _auth=_path.join(_dir,"auth.json");'
+    'const _j=JSON.parse(_fs.readFileSync(_auth,"utf8"));'
+    'if(_j&&_j.accessToken)_agentcliBearer=_j.accessToken;'
+    'try{const _sub=JSON.parse(Buffer.from(String(_agentcliBearer).split(".")[1],"base64").toString()).sub;'
+    '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),'
+    'JSON.stringify({sub:_sub,ts:Date.now(),pid:process.pid,via:"disk-override"}))}'
+    'catch(_e){}}catch(_e){}}'
+)
+
+# 旧版 disk-override（给 const l 赋值 → 运行时抛错被吞，读盘失效）
+_DISK_BEARER_OVERRIDE_LEGACY_L = (
     '{/*agentcli-hot-auth-disk*/try{const _fs=(process.getBuiltinModule&&'
     '(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||'
     'require("node:fs");const _path=(process.getBuiltinModule&&'
@@ -125,4 +145,30 @@ _DISK_BEARER_OVERRIDE = (
     '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),'
     'JSON.stringify({sub:_sub,ts:Date.now(),pid:process.pid,via:"disk-override"}))}'
     'catch(_e){}}catch(_e){}}'
+)
+
+NUDGE_MARKER = "/*agentcli-sc-nudge*/"
+# 紧挨 slash UI 的 submitMessage 之后：轮询 ~/.cursor/sc_nudge.json 自动提交「继续」
+_NUDGE_ANCHOR = ",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o)"
+_NUDGE_INJECT = (
+    ","
+    + NUDGE_MARKER
+    + "(0,c.useEffect)((()=>{const _iv=setInterval((()=>{try{"
+    'const _fs=(process.getBuiltinModule&&(process.getBuiltinModule("node:fs")'
+    '||process.getBuiltinModule("fs")))||require("node:fs");'
+    'const _path=(process.getBuiltinModule&&(process.getBuiltinModule("node:path")'
+    '||process.getBuiltinModule("path")))||require("node:path");'
+    'const _os=(process.getBuiltinModule&&(process.getBuiltinModule("node:os")'
+    '||process.getBuiltinModule("os")))||require("node:os");'
+    'const _p=_path.join(_os.homedir(),".cursor","sc_nudge.json");'
+    "if(!_fs.existsSync(_p))return;"
+    'const _j=JSON.parse(_fs.readFileSync(_p,"utf8"));'
+    'if(!_j||"continue"!==_j.action)return;'
+    "const _ts=Number(_j.ts||0);"
+    "if(!_ts||Date.now()-_ts>12e4)return void _fs.unlinkSync(_p);"
+    "_fs.unlinkSync(_p);"
+    'const _t=String(_j.text||"继续");'
+    "null==br||null==br.submitMessage||br.submitMessage(_t)"
+    "}catch(_e){}}),1e3);return()=>clearInterval(_iv)}),[br])"
+    + _NUDGE_ANCHOR
 )

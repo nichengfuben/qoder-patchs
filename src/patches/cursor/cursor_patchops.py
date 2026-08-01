@@ -21,8 +21,11 @@ from patches.cursor.cursor_hotauth import (
     clear_node_compile_cache,
 )
 from patches.cursor.cursor_chunks import (
+    NUDGE_MARKER,
     _FOOTER_KEEP_NEW,
     _FOOTER_KEEP_OLD,
+    _NUDGE_ANCHOR,
+    _NUDGE_INJECT,
     _SLASH_ANCHOR,
     _SLASH_INJECT,
     _STATUS_INTERVAL_NEW,
@@ -258,6 +261,76 @@ def _inject_slash(bundle_dir: Path, dry_run: bool) -> tuple[int, list[Path], lis
         chunk.write_text(new_text, encoding="utf-8")
         files.append(chunk)
         logger.info("Injected /sc slash (pull|usage) into {}", chunk)
+    return hits, files, backups
+
+
+def _inject_nudge(bundle_dir: Path, dry_run: bool) -> tuple[int, list[Path], list[Path]]:
+    """注入换号后自动 submitMessage(继续) 的 UI 轮询。"""
+    files: list[Path] = []
+    backups: list[Path] = []
+    hits = 0
+    for chunk in bundle_dir.glob("*.index.js"):
+        try:
+            text = chunk.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if _NUDGE_ANCHOR not in text and NUDGE_MARKER not in text:
+            continue
+        working = text
+        if NUDGE_MARKER in working:
+            start = working.find("," + NUDGE_MARKER)
+            if start < 0:
+                start = working.find(NUDGE_MARKER)
+            end = working.find(_NUDGE_ANCHOR, start) if start >= 0 else -1
+            if start >= 0 and end > start:
+                working = working[:start] + working[end:]
+        if _NUDGE_ANCHOR not in working:
+            continue
+        if _NUDGE_INJECT in working:
+            hits += 1
+            continue
+        hits += 1
+        if dry_run:
+            continue
+        new_text = working.replace(_NUDGE_ANCHOR, _NUDGE_INJECT, 1)
+        assert_js_syntax(chunk, new_text)
+        bak = chunk.with_suffix(chunk.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
+        bak.write_text(text, encoding="utf-8")
+        backups.append(bak)
+        chunk.write_text(new_text, encoding="utf-8")
+        files.append(chunk)
+        logger.info("Injected sc continue-nudge into {}", chunk)
+    return hits, files, backups
+
+
+def _strip_nudge(bundle_dir: Path, dry_run: bool) -> tuple[int, list[Path], list[Path]]:
+    files: list[Path] = []
+    backups: list[Path] = []
+    hits = 0
+    for chunk in bundle_dir.glob("*.index.js"):
+        try:
+            text = chunk.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if NUDGE_MARKER not in text:
+            continue
+        start = text.find("," + NUDGE_MARKER)
+        if start < 0:
+            start = text.find(NUDGE_MARKER)
+        end = text.find(_NUDGE_ANCHOR, start) if start >= 0 else -1
+        if start < 0 or end <= start:
+            continue
+        hits += 1
+        if dry_run:
+            continue
+        new_text = text[:start] + text[end:]
+        assert_js_syntax(chunk, new_text)
+        bak = chunk.with_suffix(chunk.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
+        bak.write_text(text, encoding="utf-8")
+        backups.append(bak)
+        chunk.write_text(new_text, encoding="utf-8")
+        files.append(chunk)
+        logger.info("Removed sc continue-nudge from {}", chunk)
     return hits, files, backups
 
 def _strip_slash(bundle_dir: Path, dry_run: bool) -> tuple[int, list[Path], list[Path]]:

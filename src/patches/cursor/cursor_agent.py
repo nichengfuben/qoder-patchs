@@ -28,8 +28,10 @@ from patches.cursor.cursor_hotauth import (
 from patches.cursor.cursor_hotauth import BOOT_MARKER
 from patches.cursor.cursor_hotauth import _COMPILE_CACHE_NEW, _COMPILE_CACHE_OLD
 from patches.cursor.cursor_chunks import (
+    NUDGE_MARKER,
     _DISK_BEARER_OVERRIDE,
     _FOOTER_KEEP_OLD,
+    _NUDGE_ANCHOR,
     _STATUS_INTERVAL_OLD,
 )
 from patches.cursor.cursor_repls import _GET_ACCESS_NOCACHE, _REPLACEMENTS
@@ -56,6 +58,7 @@ __all__ = [
     "FOOTER_KEEP_MARKER",
     "MARKER",
     "SLASH_MARKER",
+    "NUDGE_MARKER",
     "STATUS_INTERVAL_MARKER",
     "_COMPILE_CACHE_NEW",
     "_COMPILE_CACHE_OLD",
@@ -76,7 +79,7 @@ class CursorAgentPatch(PatchBase):
             name="cursor-agent",
             display_name="Cursor Agent 热更新与自动换号",
             description=(
-                "AuthStorage/keychain/ephemeral 全部强制读盘；禁用 NODE_COMPILE_CACHE；"
+                "AuthStorage/keychain/ephemeral 全部强制读盘；换号后自动继续；禁用 NODE_COMPILE_CACHE；"
                 "启动 agent 时自动后台 sc auto；注入 /sc pull|usage；statusline 定时刷新。"
             ),
             version="2.4.0",
@@ -164,10 +167,10 @@ def _apply_patch(patch: CursorAgentPatch, bundle_dir: Path, dry_run: bool) -> Pa
     return PatchResult(
         status=PatchStatus.APPLIED,
         message=(
-            f"hot-auth(v2 ephemeral-off) + auto-boot + /sc + statusline 已应用 "
-            f"(hot={stats['hot']}, slash={stats['slash']}, interval={stats['iv']}, "
-            f"footer={stats['ft']}, boot={stats['boot']}, launchers={stats['ag']}, "
-            f"config={stats['cfg']}, root={root})"
+            f"hot-auth(v2 ephemeral-off) + auto-boot + /sc + continue-nudge + statusline 已应用 "
+            f"(hot={stats['hot']}, slash={stats['slash']}, nudge={stats['nudge']}, "
+            f"interval={stats['iv']}, footer={stats['ft']}, boot={stats['boot']}, "
+            f"launchers={stats['ag']}, config={stats['cfg']}, root={root})"
         ),
         patch_name=patch.metadata.name,
         files_modified=files,
@@ -198,11 +201,15 @@ def _optional_uichunk_ok(texts: list[str], marker: str, old: str) -> bool:
 def _check_flags(target: Path, root: Optional[Path], text: str) -> dict:
     hot_ok = MARKER in text and EPHEMERAL_NULL_MARKER in text and DISK_MARKER in text
     chunks = _uichunk_texts(target)
+    nudge_ok = any(NUDGE_MARKER in t for t in chunks) or not any(
+        _NUDGE_ANCHOR in t for t in chunks
+    )
     return {
         "hot": hot_ok,
         "sc": _sc_launchers_ok(root),
         "boot": _boot_ok(root, target),
         "slash": len(ops.slash_chunks(target)) > 0,
+        "nudge": nudge_ok,
         # interval/footer 依赖特定 UI chunk；新版本对不上时不算失败
         "interval": _optional_uichunk_ok(chunks, STATUS_INTERVAL_MARKER, _STATUS_INTERVAL_OLD),
         "footer": _optional_uichunk_ok(chunks, FOOTER_KEEP_MARKER, _FOOTER_KEEP_OLD),
@@ -235,7 +242,16 @@ def _boot_ok(root: Optional[Path], target: Path) -> bool:
 def _apply_all_phases(index: Path, target: Path, root: Optional[Path]) -> tuple:
     files: list[Path] = []
     backups: list[Path] = []
-    stats = {"hot": 0, "slash": 0, "iv": 0, "ft": 0, "boot": False, "ag": False, "cfg": None}
+    stats = {
+        "hot": 0,
+        "slash": 0,
+        "nudge": 0,
+        "iv": 0,
+        "ft": 0,
+        "boot": False,
+        "ag": False,
+        "cfg": None,
+    }
     hot_hits, hot_file, hot_bak = ops.patch_hot_auth(index, dry_run=False)
     stats["hot"] = hot_hits
     if hot_file:
@@ -260,6 +276,10 @@ def _apply_side_patches(
     stats["slash"] = slash_hits
     files.extend(slash_files)
     backups.extend(slash_baks)
+    nudge_hits, nudge_files, nudge_baks = ops._inject_nudge(target, dry_run=False)
+    stats["nudge"] = nudge_hits
+    files.extend(nudge_files)
+    backups.extend(nudge_baks)
     iv_hits, iv_files, iv_baks = ops.patch_statusline_interval(target, dry_run=False)
     stats["iv"] = iv_hits
     files.extend(iv_files)
@@ -360,6 +380,8 @@ def _rollback_chunks(target: Path) -> list[Path]:
     files: list[Path] = []
     _, slash_files, _ = ops._strip_slash(target, dry_run=False)
     files.extend(slash_files)
+    _, nudge_files, _ = ops._strip_nudge(target, dry_run=False)
+    files.extend(nudge_files)
     _, iv_files = ops.strip_statusline_interval(target, dry_run=False)
     files.extend(iv_files)
     _, ft_files = ops.strip_footer_keep(target, dry_run=False)

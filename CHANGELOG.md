@@ -2,6 +2,11 @@
 
 本文件记录 Patcher（原 AgentCLI Patchs）的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.5.2
+
+- **换号自动继续**：换号成功后写入 `~/.cursor/sc_nudge.json`，Agent UI 轮询并 `submitMessage("继续")`，无需手动再说一遍
+- **hot-auth disk-override**：外层 `const l` 不再直接赋值（此前赋值被吞导致读盘失效），改为 `var _agentcliBearer`
+
 ## 2.5.1
 
 - **CLI**：应用/状态/回滞按补丁解析目标目录；`cursor-agent` 不再依赖 Qoder `bundle`（Linux 无 Qoder 时可直接打 Agent 补丁）

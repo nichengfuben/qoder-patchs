@@ -2,7 +2,10 @@ from __future__ import annotations
 
 """Hot-auth JS replacement table."""
 
-from patches.cursor.cursor_chunks import _DISK_BEARER_OVERRIDE
+from patches.cursor.cursor_chunks import (
+    _DISK_BEARER_OVERRIDE,
+    _DISK_BEARER_OVERRIDE_LEGACY_L,
+)
 
 _GET_ACCESS_HOT = (
     "getAccessToken(){return o(this,void 0,void 0,(function*(){var e;"
@@ -191,18 +194,35 @@ _REPLACEMENTS: tuple[tuple[str, str], ...] = (
         "setEphemeralToken:e=>{R=e}",
         "setEphemeralToken:e=>{/*agentcli-hot-auth*/R=null}",
     ),
-    # 核弹：每次设 Bearer 前同步读盘覆盖 l，并写入 agentcli-last-bearer.json 供对照
+    # 核弹：每次设 Bearer 前同步读盘；用 var _agentcliBearer（外层常是 const l，不能赋值）
     (
         'l=yield(0,B.uX)(e,a);null!=l&&s.header.set("authorization",`Bearer ${l}`);',
-        'l=yield(0,B.uX)(e,a);'
+        'l=yield(0,B.uX)(e,a);var _agentcliBearer=l;'
         + _DISK_BEARER_OVERRIDE
-        + 'null!=l&&s.header.set("authorization",`Bearer ${l}`);',
+        + 'null!=_agentcliBearer&&s.header.set("authorization",`Bearer ${_agentcliBearer}`);',
     ),
     (
         '}(e,a);null!=l&&s.header.set("authorization",`Bearer ${l}`);',
-        '}(e,a);'
+        '}(e,a);var _agentcliBearer=l;'
         + _DISK_BEARER_OVERRIDE
+        + 'null!=_agentcliBearer&&s.header.set("authorization",`Bearer ${_agentcliBearer}`);',
+    ),
+    # 升级：旧 disk-override 给 const l 赋值（静默失败）→ _agentcliBearer
+    (
+        'l=yield(0,B.uX)(e,a);'
+        + _DISK_BEARER_OVERRIDE_LEGACY_L
         + 'null!=l&&s.header.set("authorization",`Bearer ${l}`);',
+        'l=yield(0,B.uX)(e,a);var _agentcliBearer=l;'
+        + _DISK_BEARER_OVERRIDE
+        + 'null!=_agentcliBearer&&s.header.set("authorization",`Bearer ${_agentcliBearer}`);',
+    ),
+    (
+        '}(e,a);'
+        + _DISK_BEARER_OVERRIDE_LEGACY_L
+        + 'null!=l&&s.header.set("authorization",`Bearer ${l}`);',
+        '}(e,a);var _agentcliBearer=l;'
+        + _DISK_BEARER_OVERRIDE
+        + 'null!=_agentcliBearer&&s.header.set("authorization",`Bearer ${_agentcliBearer}`);',
     ),
     # local-worker / indexing：se(credentialManager) 路径同样强制读盘
     (

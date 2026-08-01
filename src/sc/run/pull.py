@@ -269,6 +269,13 @@ def _check_usage_ok(
         if not api.is_limit_reached(usage, threshold):
             set_action("ok", f"换号成功 total={usage['total_pct']:.1f}% < {threshold}%")
             print(f"换号成功，额度正常 ({usage['total_pct']:.1f}% < {threshold}%)")
+            try:
+                from sc.run.nudge import request_continue_nudge
+
+                nudge_path = request_continue_nudge("继续")
+                print(f"已请求 Agent 自动继续 → {nudge_path}")
+            except Exception as nudge_exc:
+                print(f"写入自动继续信号失败: {nudge_exc}")
             return True
         if attempt < attempts:
             set_action("switching", f"新号仍超阈值 (>={threshold}%)，继续拉号")
