@@ -101,7 +101,7 @@ apply 后写入 `~/.cursor/cli-config.json` 的 `statusLine`。一行紧凑状�
 
 - 常态：`SC A OK [████…░░░░] 38.0% a12.0% p55.0% user@x/pro #12`
 - 刷新：`SC A ↻#12 OK …`
-- 换号：`SC SWITCH thr>=95% → …`
+- 换号：`SC SWITCH thr>=90% → …`
 
 **重启一次 `ag`** 后 statusLine 与 auto-boot 生效。
 

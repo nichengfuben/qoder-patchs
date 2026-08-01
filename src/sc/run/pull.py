@@ -21,7 +21,7 @@ def mask_key(key: str) -> str:
 def usage_threshold(cfg: dict) -> float:
     if cfg.get("usage_threshold") is not None:
         return float(cfg.get("usage_threshold"))
-    return 95.0
+    return 90.0
 
 
 def make_pool(cfg: dict) -> KeyPool:

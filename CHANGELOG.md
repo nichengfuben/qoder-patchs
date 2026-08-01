@@ -6,6 +6,7 @@
 
 - **换号自动继续**：换号成功后写入 `~/.cursor/sc_nudge.json`，Agent UI 轮询并 `submitMessage("继续")`，无需手动再说一遍
 - **hot-auth disk-override**：外层 `const l` 不再直接赋值（此前赋值被吞导致读盘失效），改为 `var _agentcliBearer`
+- **阈值**：默认 `usage_threshold` 95% → 90%
 
 ## 2.5.1
 
