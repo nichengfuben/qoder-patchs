@@ -99,7 +99,7 @@ def _get_engine():
 
 
 def _get_bundle_dir() -> Optional[Path]:
-    """Resolve and cache the bundle directory."""
+    """Resolve and cache the Qoder CLI bundle directory."""
     if _state["bundle_dir"] is not None:
         return _state["bundle_dir"]
 
@@ -109,6 +109,28 @@ def _get_bundle_dir() -> Optional[Path]:
     bundle_dir = find_bundle_dir(config)
     _state["bundle_dir"] = bundle_dir
     return bundle_dir
+
+
+def _target_dir_for_patch(name: str) -> Optional[Path]:
+    """按补丁解析目标目录：cursor-agent 用 Agent 安装根，其余用 Qoder bundle。"""
+    if name == "cursor-agent":
+        from sc.core.paths import find_cursor_agent_bundle
+
+        return find_cursor_agent_bundle()
+    return _get_bundle_dir()
+
+
+def _missing_target_hint(name: str) -> str:
+    if name == "cursor-agent":
+        return (
+            "未找到 Cursor Agent（versions/*/index.js）。\n"
+            "Linux/macOS: ~/.local/share/cursor-agent；"
+            "Windows: %LOCALAPPDATA%\\cursor-agent"
+        )
+    return (
+        "未找到 Qoder CLI bundle 目录。\n"
+        "请设置 paths.bundle_dir 或 PATCHER_BUNDLE / AGENTCLI_PATCHS_BUNDLE"
+    )
 
 
 def _get_cli():
@@ -203,32 +225,32 @@ def _show_about(cli) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _apply_all(engine, bundle_dir, cli, dry_run: bool) -> None:
-    """Apply every registered patch and report a summary."""
+def _apply_one(engine, cli, name: str, dry_run: bool) -> bool:
+    """Resolve target for *name*, apply, report. Return success."""
+    target = _target_dir_for_patch(name)
+    if target is None:
+        cli.error(f"{name}: {_missing_target_hint(name)}")
+        return False
+    cli.info(f"应用补丁: {name}")
+    result = engine.apply(name, target, dry_run=dry_run)
+    if result.success:
+        cli.success(f"{result.patch_name}: {result.message}")
+        return True
+    cli.error(f"{result.patch_name}: {result.message}")
+    return False
+
+
+def _apply_all(engine, cli, dry_run: bool) -> None:
+    """Apply every registered patch (each with its own target dir)."""
     cli.info("应用所有补丁...")
-    results = engine.apply_all(bundle_dir, dry_run=dry_run)
-    for r in results:
-        if r.success:
-            cli.success(f"{r.patch_name}: {r.message}")
-        else:
-            cli.error(f"{r.patch_name}: {r.message}")
-    succeeded = sum(1 for r in results if r.success)
+    names = _get_registry().names()
+    results = [_apply_one(engine, cli, n, dry_run) for n in names]
+    succeeded = sum(1 for ok in results if ok)
     cli.print()
     cli.info(f"完成: {succeeded}/{len(results)} 个补丁应用成功")
 
 
-def _apply_named(engine, bundle_dir, cli, name: str, dry_run: bool) -> None:
-    """Apply a single named patch, exiting with code 1 on failure."""
-    cli.info(f"应用补丁: {name}")
-    result = engine.apply(name, bundle_dir, dry_run=dry_run)
-    if result.success:
-        cli.success(f"{result.patch_name}: {result.message}")
-    else:
-        cli.error(f"{result.patch_name}: {result.message}")
-        raise typer.Exit(code=1)
-
-
-def _apply_interactive_select(engine, bundle_dir, cli, dry_run: bool) -> None:
+def _apply_interactive_select(engine, cli, dry_run: bool) -> None:
     """Prompt the user to select patches, then apply each selection."""
     registry = _get_registry()
     config = _get_config()
@@ -249,13 +271,23 @@ def _apply_interactive_select(engine, bundle_dir, cli, dry_run: bool) -> None:
         config.patch.force_reapply = True
     try:
         for patch_name in selected:
-            result = engine.apply(patch_name, bundle_dir, dry_run=dry_run)
-            if result.success:
-                cli.success(f"{result.patch_name}: {result.message}")
-            else:
-                cli.error(f"{result.patch_name}: {result.message}")
+            _apply_one(engine, cli, patch_name, dry_run)
     finally:
         config.patch.force_reapply = prev_force
+
+
+def _collect_statuses(engine) -> dict:
+    """Per-patch status using the correct target directory for each."""
+    from core.patch_base import PatchStatus
+
+    out = {}
+    for name in _get_registry().names():
+        target = _target_dir_for_patch(name)
+        if target is None:
+            out[name] = PatchStatus.UNKNOWN
+            continue
+        out[name] = engine.status(name, target)
+    return out
 
 
 @typer_app.command()
@@ -275,30 +307,22 @@ def apply(
 ) -> None:
     """应用补丁."""
     engine = _get_engine()
-    bundle_dir = _get_bundle_dir()
     cli = _get_cli()
     config = _get_config()
 
     if force:
         config.patch.force_reapply = True
 
-    if bundle_dir is None:
-        cli.error(
-            "未找到 Qoder CLI bundle 目录.\n"
-            "请在配置中设置 paths.bundle_dir 或设置 PATCHER_BUNDLE（或 AGENTCLI_PATCHS_BUNDLE）环境变量"
-        )
-        raise typer.Exit(code=10)
-
     if all_patches:
-        _apply_all(engine, bundle_dir, cli, dry_run)
+        _apply_all(engine, cli, dry_run)
         return
 
     if name:
-        _apply_named(engine, bundle_dir, cli, name, dry_run)
+        if not _apply_one(engine, cli, name, dry_run):
+            raise typer.Exit(code=1)
         return
 
-    # No name, no --all -> interactive selection
-    _apply_interactive_select(engine, bundle_dir, cli, dry_run)
+    _apply_interactive_select(engine, cli, dry_run)
 
 
 @typer_app.command()
@@ -309,21 +333,8 @@ def status(
 ) -> None:
     """查看补丁状态."""
     engine = _get_engine()
-    bundle_dir = _get_bundle_dir()
     cli = _get_cli()
-
-    if bundle_dir is None:
-        cli.warning("未找到 bundle 目录, 无法检查补丁状态")
-        # Still show registered patches
-        registry = _get_registry()
-        names = registry.names()
-        if names:
-            cli.info(f"已注册补丁: {', '.join(names)}")
-        else:
-            cli.info("未注册任何补丁")
-        raise typer.Exit(code=10)
-
-    statuses = engine.status_all(bundle_dir)
+    statuses = _collect_statuses(engine)
 
     if as_json:
         data = {k: v.value for k, v in statuses.items()}
@@ -334,6 +345,9 @@ def status(
         cli.info("未注册任何补丁")
         return
 
+    for name, st in statuses.items():
+        if st.value == "unknown" and _target_dir_for_patch(name) is None:
+            cli.warning(f"{name}: {_missing_target_hint(name)}")
     cli.status_table(statuses)
 
 
@@ -345,15 +359,14 @@ def rollback(
 ) -> None:
     """回滚补丁."""
     engine = _get_engine()
-    bundle_dir = _get_bundle_dir()
     cli = _get_cli()
-
-    if bundle_dir is None:
-        cli.error("未找到 bundle 目录")
+    target = _target_dir_for_patch(name)
+    if target is None:
+        cli.error(_missing_target_hint(name))
         raise typer.Exit(code=10)
 
     cli.info(f"回滚补丁: {name}")
-    result = engine.rollback(name, bundle_dir)
+    result = engine.rollback(name, target)
     if result.success:
         cli.success(f"{result.patch_name}: {result.message}")
     else:

@@ -51,10 +51,9 @@ class TestStatusCommand:
     """Test the status command (without bundle dir)."""
 
     def test_status_command(self):
-        """Status should handle missing bundle dir gracefully."""
+        """Status works even without Qoder bundle (cursor-agent has own root)."""
         result = runner.invoke(typer_app, ["status"])
-        # May exit with code 10 (bundle not found) or 0
-        assert result.exit_code in (0, 10)
+        assert result.exit_code == 0
 
 
 class TestConfigShowCommand:

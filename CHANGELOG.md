@@ -2,6 +2,10 @@
 
 本文件记录 Patcher（原 AgentCLI Patchs）的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.5.1
+
+- **CLI**：应用/状态/回滞按补丁解析目标目录；`cursor-agent` 不再依赖 Qoder `bundle`（Linux 无 Qoder 时可直接打 Agent 补丁）
+
 ## 2.5.0
 
 - **跨平台**：`cursor-agent` 补丁支持 Windows / Linux / macOS

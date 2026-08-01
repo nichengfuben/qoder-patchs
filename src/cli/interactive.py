@@ -87,25 +87,15 @@ def _interactive_apply(cli) -> None:
     registry = app._get_registry()
     engine = app._get_engine()
     config = app._get_config()
-    bundle_dir = app._get_bundle_dir()
 
     patches = registry.get_all()
     if not patches:
         cli.warning("未找到任何已注册的补丁")
-        # 未找到任何已注册的补丁
         return
 
     selected = patch_select_menu(patches)
     if not selected:
-        cli.info("未选择任何补丁")  # 未选择任何补丁
-        return
-
-    if bundle_dir is None:
-        cli.error(
-            "未找到 Qoder CLI bundle 目录. "
-            "请在配置中设置 paths.bundle_dir"
-        )
-        # 未找到 Qoder CLI bundle 目录. 请在配置中设置 paths.bundle_dir
+        cli.info("未选择任何补丁")
         return
 
     # 菜单里主动选中即视为要重打（否则已 APPLIED 会被引擎直接跳过）
@@ -113,12 +103,7 @@ def _interactive_apply(cli) -> None:
     config.patch.force_reapply = True
     try:
         for name in selected:
-            cli.info(f"正在应用补丁: {name}")  # 正在应用补丁: ...
-            result = engine.apply(name, bundle_dir)
-            if result.success:
-                cli.success(f"{name}: {result.message}")
-            else:
-                cli.error(f"{name}: {result.message}")
+            app._apply_one(engine, cli, name, dry_run=False)
     finally:
         config.patch.force_reapply = prev_force
 
@@ -128,21 +113,14 @@ def _interactive_status(cli) -> None:
     from cli import app
 
     engine = app._get_engine()
-    bundle_dir = app._get_bundle_dir()
-
-    if bundle_dir is None:
-        cli.warning(
-            "未找到 bundle 目录, "
-            "无法检查补丁状态"
-        )
-        # 未找到 bundle 目录, 无法检查补丁状态
-        return
-
-    statuses = engine.status_all(bundle_dir)
+    statuses = app._collect_statuses(engine)
     if not statuses:
-        cli.info("未注册任何补丁")  # 未注册任何补丁
+        cli.info("未注册任何补丁")
         return
 
+    for name, st in statuses.items():
+        if st.value == "unknown" and app._target_dir_for_patch(name) is None:
+            cli.warning(f"{name}: {app._missing_target_hint(name)}")
     cli.status_table(statuses)
 
 
@@ -153,18 +131,11 @@ def _interactive_rollback(cli) -> None:
     from cli.menu import patch_select_menu
 
     engine = app._get_engine()
-    bundle_dir = app._get_bundle_dir()
     registry = app._get_registry()
-
-    if bundle_dir is None:
-        cli.error("未找到 bundle 目录")
-        # 未找到 bundle 目录
-        return
 
     patches = registry.get_all()
     if not patches:
         cli.warning("未找到任何补丁")
-        # 未找到任何补丁
         return
 
     selected = patch_select_menu(patches)
@@ -174,9 +145,12 @@ def _interactive_rollback(cli) -> None:
 
     for name in selected:
         if not qconfirm(f"确定要回滞补丁 {name} ?"):
-            # 确定要回滚补丁 ... ?
             continue
-        result = engine.rollback(name, bundle_dir)
+        target = app._target_dir_for_patch(name)
+        if target is None:
+            cli.error(app._missing_target_hint(name))
+            continue
+        result = engine.rollback(name, target)
         if result.success:
             cli.success(f"{name}: {result.message}")
         else:
