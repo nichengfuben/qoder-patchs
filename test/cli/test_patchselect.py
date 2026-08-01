@@ -5,14 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from cli import menu
-
-
-class _FakeAsk:
-    def __init__(self, value):
-        self._value = value
-
-    def ask(self):
-        return self._value
+from echotools.media.console.uiwidgets.ui_select import SelectionResult
 
 
 def test_patch_select_menu_enter_selects_one(monkeypatch) -> None:
@@ -26,15 +19,15 @@ def test_patch_select_menu_enter_selects_one(monkeypatch) -> None:
     }
     captured: dict = {}
 
-    def fake_select(prompt, choices=None, style=None, instruction=None):
-        captured["prompt"] = prompt
-        captured["values"] = [c.value for c in choices]
-        return _FakeAsk(["cursor-agent"])
+    def fake_run_select(ui, title, options, default_index=0):
+        captured["title"] = title
+        captured["options"] = list(options)
+        return SelectionResult(1, options[1])
 
-    monkeypatch.setattr(menu.questionary, "select", fake_select)
+    monkeypatch.setattr(menu, "run_select", fake_run_select)
     assert menu.patch_select_menu(patches) == ["cursor-agent"]
-    assert ["cursor-agent", "remove-qoder-warning"] in captured["values"]
-    assert [] in captured["values"]
+    assert "全部补丁" in captured["options"]
+    assert "取消" in captured["options"]
 
 
 def test_patch_select_menu_all(monkeypatch) -> None:
@@ -43,10 +36,10 @@ def test_patch_select_menu_all(monkeypatch) -> None:
         "b": SimpleNamespace(metadata=SimpleNamespace(display_name="B", version="1")),
     }
 
-    def fake_select(prompt, choices=None, style=None, instruction=None):
-        return _FakeAsk(list(patches.keys()))
+    def fake_run_select(ui, title, options, default_index=0):
+        return SelectionResult(0, options[0])
 
-    monkeypatch.setattr(menu.questionary, "select", fake_select)
+    monkeypatch.setattr(menu, "run_select", fake_run_select)
     assert menu.patch_select_menu(patches) == ["a", "b"]
 
 
@@ -55,8 +48,8 @@ def test_patch_select_menu_cancel(monkeypatch) -> None:
         "a": SimpleNamespace(metadata=SimpleNamespace(display_name="A", version="1")),
     }
 
-    def fake_select(prompt, choices=None, style=None, instruction=None):
-        return _FakeAsk([])
+    def fake_run_select(ui, title, options, default_index=0):
+        return SelectionResult(len(options) - 1, options[-1])
 
-    monkeypatch.setattr(menu.questionary, "select", fake_select)
+    monkeypatch.setattr(menu, "run_select", fake_run_select)
     assert menu.patch_select_menu(patches) == []

@@ -36,25 +36,6 @@ def config_show() -> None:
                 cli.print(f"    {field_name} = {value}")
 
 
-def _coerce_config_set_value(current: object, value: str) -> object:
-    """Coerce a raw CLI string *value* to match the type of *current*.
-
-    Args:
-        current: The existing value at the target config path.
-        value: The raw string value supplied on the command line.
-
-    Returns:
-        The coerced value (bool/int/None/str).
-    """
-    if isinstance(current, bool):
-        return value.lower() in ("true", "1", "yes", "是")
-    if isinstance(current, int):
-        return int(value)
-    if current is None and value in ("None", "null", ""):
-        return None
-    return value
-
-
 @config_app.command("set")
 def config_set(
     key: str = typer.Argument(
@@ -67,6 +48,7 @@ def config_set(
 ) -> None:
     """修改配置项."""  # 修改配置项.
     from cli import app
+    from cli.echotools_bridge import coerce_config_set_value
 
     config = app._get_config()
     cli = app._get_cli()
@@ -78,7 +60,7 @@ def config_set(
             obj = getattr(obj, part)
 
         current = getattr(obj, parts[-1], None)
-        new_value = _coerce_config_set_value(current, value)
+        new_value = coerce_config_set_value(current, value)
         setattr(obj, parts[-1], new_value)
 
         from core.config import resolve_config_path

@@ -8,7 +8,10 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+from echotools.media.console import TextUtils
+
 from sc.run.status_store import display_state, read_status
+
 
 def _pct(v: Any) -> str:
     if v is None:
@@ -62,33 +65,14 @@ def _plan_badge(d: Dict[str, Any]) -> tuple[str, str]:
 
 
 def _visible_len(s: str) -> int:
-    out = 0
-    i = 0
-    while i < len(s):
-        if s[i] == "\033":
-            j = s.find("m", i)
-            i = j + 1 if j >= 0 else i + 1
-            continue
-        out += 1
-        i += 1
-    return out
+    return TextUtils.display_width(s)
 
 
 def _truncate_ansi(s: str, width: int) -> str:
-    if _visible_len(s) <= width:
+    if TextUtils.display_width(s) <= width:
         return s
-    plain: list[str] = []
-    i = 0
-    while i < len(s) and len(plain) < max(0, width - 1):
-        if s[i] == "\033":
-            j = s.find("m", i)
-            if j < 0:
-                break
-            i = j + 1
-            continue
-        plain.append(s[i])
-        i += 1
-    return "".join(plain) + "…\033[0m"
+    plain = TextUtils.strip_ansi(s)
+    return TextUtils.truncate(plain, max(0, width - 1)) + "…\033[0m"
 
 
 def _fit_bar_width(fixed_visible: int, width: int, default: int = 30) -> int:

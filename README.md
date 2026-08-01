@@ -32,7 +32,7 @@ sc                      # 便携换号 CLI
 
 ```
 src/
-  cli/       # Typer 交互与主题
+  cli/       # Typer 交互与 echotools ConsoleUI 主题
   core/      # 引擎 / 注册表 / PatchBase
   patches/   # remove-qoder-warning、cursor-agent
   sc/        # 便携换号（core/ + run/）

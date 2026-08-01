@@ -2,6 +2,12 @@
 
 本文件记录 Patcher（原 AgentCLI Patchs）的发布变更。产品说明见 [README.md](README.md)。
 
+## 2.5.3
+
+- **CLI UI 下沉 echotools**：移除 `questionary` 与本地 `charmap.py`；交互菜单、ASCII 横幅、主题与配置编辑改由 `echotools[console]` 驱动
+- **新增** `cli/echotools_bridge.py`：同步 select/confirm、Patcher 渐变主题、配置 flatten/coerce 工具
+- **statusLine**：ANSI 宽度/截断改用 `echotools.TextUtils`
+
 ## 2.5.2
 
 - **换号自动继续**：换号成功后写入 `~/.cursor/sc_nudge.json`，Agent UI 轮询并 `submitMessage("继续")`，无需手动再说一遍

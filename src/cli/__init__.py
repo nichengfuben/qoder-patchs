@@ -1,24 +1,16 @@
 """CLI interface for Patcher.
 
-Provides Typer-based command-line interface with:
-- Interactive menus (Questionary)
-- Blue theme (Rich)
-- ASCII art banner (charmap)
+Typer commands + echotools ConsoleUI interactive menus.
 """
 
 __version__ = "2.4.5"
 
 from cli.app import typer_app
-from cli.charmap import (
+from cli.commands.theme import BLUE_THEME, BluePalette, get_console, get_patcher_gradient_theme
+from cli.echotools_bridge import (
     BLUE_GRADIENT_PALETTE,
     render_gradient_banner,
     render_text,
-)
-from cli.commands.theme import (
-    BLUE_THEME,
-    BluePalette,
-    get_console,
-    get_questionary_style,
 )
 from cli.ui import BlueCLI
 
@@ -29,7 +21,7 @@ __all__ = [
     "BluePalette",
     "__version__",
     "get_console",
-    "get_questionary_style",
+    "get_patcher_gradient_theme",
     "render_gradient_banner",
     "render_text",
     "typer_app",

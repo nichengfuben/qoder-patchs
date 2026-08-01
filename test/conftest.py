@@ -27,7 +27,7 @@ from core.config import AppConfig
 def _disable_windows_stdout_wrapping():
     """Patch _get_utf8_stdout to return plain sys.stdout (no wrapping)."""
     with _mock_patch(
-        "cli.commands.theme._get_utf8_stdout",
+        "cli.echotools_bridge._get_utf8_stdout",
         return_value=sys.stdout,
     ):
         yield
