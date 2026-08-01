@@ -290,6 +290,11 @@ def _strip_slash(bundle_dir: Path, dry_run: bool) -> tuple[int, list[Path], list
     return hits, files, backups
 
 def assert_js_syntax(path: Path, source: str) -> None:
+    """用独立 checker + vm.Script 校验。
+
+    勿用 ``node --check file``：对超大 webpack chunk 会误报。
+    勿用 ``node -e code file``：Windows 上会把 file 再当入口解析。
+    """
     node = find_cursor_agent_bundle()
     node_exe = Path("node")
     if node is not None:
@@ -298,23 +303,38 @@ def assert_js_syntax(path: Path, source: str) -> None:
             if cand.exists():
                 node_exe = cand
                 break
-    with tempfile.NamedTemporaryFile(
-        "w", suffix=".js", delete=False, encoding="utf-8"
-    ) as tmp:
-        tmp.write(source)
-        tmp_path = tmp.name
+    tmp_path = None
+    checker_path = None
     try:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".js", delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp.write(source)
+            tmp_path = tmp.name
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".js", delete=False, encoding="utf-8"
+        ) as chk:
+            chk.write(
+                "const fs=require('fs');const vm=require('vm');\n"
+                "try{new vm.Script(fs.readFileSync(process.argv[1],'utf8'));}\n"
+                "catch(e){console.error(String(e&&e.message||e));process.exit(1)}\n"
+            )
+            checker_path = chk.name
         proc = subprocess.run(
-            [str(node_exe), "--check", tmp_path],
+            [str(node_exe), checker_path, tmp_path],
             capture_output=True,
             text=True,
             timeout=60,
         )
     finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
+        if checker_path:
+            Path(checker_path).unlink(missing_ok=True)
     if proc.returncode != 0:
-        err = (proc.stderr or proc.stdout or "").strip()
-        raise RuntimeError(f"JS syntax check failed on {path.name}: {err}")
+        err = (proc.stderr or proc.stdout or "").strip().splitlines()
+        msg = err[0] if err else "unknown syntax error"
+        raise RuntimeError(f"JS syntax check failed on {path.name}: {msg}")
 
 
 def patch_boot_cmd(root: Path, dry_run: bool) -> tuple[bool, Optional[Path], Optional[Path]]:
