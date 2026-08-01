@@ -148,12 +148,13 @@ _DISK_BEARER_OVERRIDE_LEGACY_L = (
 )
 
 NUDGE_MARKER = "/*agentcli-sc-nudge*/"
-# 紧挨 slash UI 的 submitMessage 之后：轮询 ~/.cursor/sc_nudge.json 自动提交「继续」
-_NUDGE_ANCHOR = ",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o)"
-_NUDGE_INJECT = (
-    ","
-    + NUDGE_MARKER
-    + "(0,c.useEffect)((()=>{const _iv=setInterval((()=>{try{"
+# 锚点落在「一条 const a=...,b=...,c=...」声明链内，只能插入合法 declarator，不能插分号
+# （分号会截断 const，后面 wr/kr 变成未声明赋值 → 渲染时 ReferenceError 并喷源码）
+_NUDGE_ANCHOR = ",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o),wr="
+# 必须先确认 br.submitMessage 可用再删信号；否则首秒 br 为空会吞掉 nudge，界面卡在旧额度错误
+_NUDGE_EFFECT = (
+    NUDGE_MARKER
+    + "_agentcliNudge=(0,c.useEffect)((()=>{const _iv=setInterval((()=>{try{"
     'const _fs=(process.getBuiltinModule&&(process.getBuiltinModule("node:fs")'
     '||process.getBuiltinModule("fs")))||require("node:fs");'
     'const _path=(process.getBuiltinModule&&(process.getBuiltinModule("node:path")'
@@ -166,24 +167,41 @@ _NUDGE_INJECT = (
     'if(!_j||"continue"!==_j.action)return;'
     "const _ts=Number(_j.ts||0);"
     "if(!_ts||Date.now()-_ts>12e4)return void _fs.unlinkSync(_p);"
-    "_fs.unlinkSync(_p);"
+    'if(null==br||"function"!=typeof br.submitMessage)return;'
     'const _t=String(_j.text||"继续");'
-    "null==br||null==br.submitMessage||br.submitMessage(_t)"
+    "br.submitMessage(_t);"
+    "try{_fs.unlinkSync(_p)}catch(_e){}"
     "}catch(_e){}}),1e3);return()=>clearInterval(_iv)}),[br])"
-    + _NUDGE_ANCHOR
+)
+_NUDGE_INJECT = (
+    ",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o)," + _NUDGE_EFFECT + ",wr="
 )
 
 
 def _nudge_strip_region(text: str) -> str:
     if NUDGE_MARKER not in text:
         return text
-    start = text.find("," + NUDGE_MARKER)
+    # 当前格式：...,yr=...,/*nudge*/_agentcliNudge=(0,c.useEffect)(...),wr=
+    start = text.find(",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o)," + NUDGE_MARKER)
+    if start >= 0:
+        end = text.find(",wr=", start)
+        if end > start:
+            return text[:start] + _NUDGE_ANCHOR + text[end + len(",wr=") :]
+    # 旧分号语句格式（会弄挂渲染）：...,yr=...;/*nudge*/...;wr=
+    start = text.find(",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o);" + NUDGE_MARKER)
+    if start >= 0:
+        end = text.find(";wr=", start)
+        if end > start:
+            return text[:start] + _NUDGE_ANCHOR + text[end + len(";wr=") :]
+    # 更旧：裸 useEffect 塞进 const 列表（Unexpected token '('）
+    legacy = "," + NUDGE_MARKER
+    start = text.find(legacy)
     if start < 0:
         start = text.find(NUDGE_MARKER)
-    end = text.find(_NUDGE_ANCHOR, start) if start >= 0 else -1
-    if start < 0 or end <= start:
-        return text
-    return text[:start] + text[end:]
+    end = text.find(",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o)", start) if start >= 0 else -1
+    if start >= 0 and end > start:
+        return text[:start] + text[end:]
+    return text
 
 
 def inject_nudge(bundle_dir, dry_run: bool = False):

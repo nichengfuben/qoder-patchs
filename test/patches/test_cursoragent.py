@@ -324,7 +324,7 @@ def test_nudge_inject_and_strip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     chunk.write_text(
         'br=(0,c.useMemo)((()=>({submitMessage:(e,t)=>{}})),[br])'
         + _NUDGE_ANCHOR
-        + ",zz=1",
+        + "1;",
         encoding="utf-8",
     )
     hits, files, _ = inject_nudge(version, dry_run=False)
@@ -332,6 +332,14 @@ def test_nudge_inject_and_strip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     text = chunk.read_text(encoding="utf-8")
     assert NUDGE_MARKER in text and _NUDGE_INJECT in text
     assert "sc_nudge.json" in text and "submitMessage" in text
+    assert "_agentcliNudge=(0,c.useEffect)" in text
+    # 不得用分号截断 const 声明链
+    assert ";/*agentcli-sc-nudge*/" not in text
+    assert ",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o);" not in text
+    # 不得在 submit 前 unlink，否则 br 未就绪时会吞掉换号信号
+    assert 'if(null==br||"function"!=typeof br.submitMessage)return;' in text
+    assert "_fs.unlinkSync(_p);const _t=" not in text
+    assert text.index("br.submitMessage(_t)") < text.index("try{_fs.unlinkSync(_p)}")
     sh, sf, _ = strip_nudge(version, dry_run=False)
     assert sh >= 1 and sf
     assert NUDGE_MARKER not in chunk.read_text(encoding="utf-8")

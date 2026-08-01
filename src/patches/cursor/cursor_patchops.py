@@ -314,9 +314,11 @@ def assert_js_syntax(path: Path, source: str) -> None:
         with tempfile.NamedTemporaryFile(
             "w", suffix=".js", delete=False, encoding="utf-8"
         ) as chk:
+            # Module.wrap 与 require() 同形；裸 vm.Script 会漏掉 CJS 下的真语法错误
             chk.write(
                 "const fs=require('fs');const vm=require('vm');\n"
-                "try{new vm.Script(fs.readFileSync(process.argv[1],'utf8'));}\n"
+                "const Module=require('module');\n"
+                "try{new vm.Script(Module.wrap(fs.readFileSync(process.argv[1],'utf8')));}\n"
                 "catch(e){console.error(String(e&&e.message||e));process.exit(1)}\n"
             )
             checker_path = chk.name
