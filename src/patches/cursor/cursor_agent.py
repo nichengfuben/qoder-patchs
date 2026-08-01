@@ -82,8 +82,9 @@ class CursorAgentPatch(PatchBase):
             name="cursor-agent",
             display_name="Cursor Agent 热更新与自动换号",
             description=(
-                "AuthStorage/keychain/ephemeral 全部强制读盘；禁用 NODE_COMPILE_CACHE；"
-                "启动 agent 时自动后台 sc auto；注入 /sc pull|usage；statusline 定时刷新。"
+                "AuthStorage/keychain/ephemeral 全部强制读盘；额度报错后 auth.json 换号自动 ResumeAction；"
+                "禁用 NODE_COMPILE_CACHE；启动 agent 时自动后台 sc auto；"
+                "注入 /sc pull|usage；statusline 定时刷新。"
             ),
             version="2.4.0",
             author="nichengfuben",

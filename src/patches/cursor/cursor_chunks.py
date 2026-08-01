@@ -192,6 +192,26 @@ _DISK_BEARER_OVERRIDE = (
     'const _j=JSON.parse(_fs.readFileSync(_auth,"utf8"));'
     'if(_j&&_j.accessToken)_agentcliBearer=_j.accessToken;'
     'try{const _sub=JSON.parse(Buffer.from(String(_agentcliBearer).split(".")[1],"base64").toString()).sub;'
+    'globalThis.__agentcliRunSub=_sub;'
+    '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),'
+    'JSON.stringify({sub:_sub,ts:Date.now(),pid:process.pid,via:"disk-override"}))}'
+    'catch(_e){}}catch(_e){}}'
+)
+
+# 已打 disk-override、尚无 __agentcliRunSub 时的升级路径
+_DISK_BEARER_OVERRIDE_V1 = (
+    '{/*agentcli-hot-auth-disk*/try{const _fs=(process.getBuiltinModule&&'
+    '(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||'
+    'require("node:fs");const _path=(process.getBuiltinModule&&'
+    '(process.getBuiltinModule("node:path")||process.getBuiltinModule("path")))||'
+    'require("node:path");const _os=(process.getBuiltinModule&&'
+    '(process.getBuiltinModule("node:os")||process.getBuiltinModule("os")))||'
+    'require("node:os");const _dir="win32"===process.platform?_path.join('
+    'process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor")'
+    ':_path.join(_os.homedir(),".cursor");const _auth=_path.join(_dir,"auth.json");'
+    'const _j=JSON.parse(_fs.readFileSync(_auth,"utf8"));'
+    'if(_j&&_j.accessToken)_agentcliBearer=_j.accessToken;'
+    'try{const _sub=JSON.parse(Buffer.from(String(_agentcliBearer).split(".")[1],"base64").toString()).sub;'
     '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),'
     'JSON.stringify({sub:_sub,ts:Date.now(),pid:process.pid,via:"disk-override"}))}'
     'catch(_e){}}catch(_e){}}'
@@ -213,6 +233,47 @@ _DISK_BEARER_OVERRIDE_LEGACY_L = (
     '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),'
     'JSON.stringify({sub:_sub,ts:Date.now(),pid:process.pid,via:"disk-override"}))}'
     'catch(_e){}}catch(_e){}}'
+)
+
+# 读 auth.json JWT sub（同步；用于换号后内部 ResumeAction 重试）
+_AUTH_FS_BOOT = (
+    'const _fs=(process.getBuiltinModule&&(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||require("node:fs"),'
+    '_path=(process.getBuiltinModule&&(process.getBuiltinModule("node:path")||process.getBuiltinModule("path")))||require("node:path"),'
+    '_os=(process.getBuiltinModule&&(process.getBuiltinModule("node:os")||process.getBuiltinModule("os")))||require("node:os");'
+)
+_AUTH_DIR = (
+    'const _dir="win32"===process.platform?_path.join('
+    'process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor")'
+    ':_path.join(_os.homedir(),".cursor")'
+)
+_READ_AUTH_SUB_EXPR = (
+    '(function(){try{/*agentcli-hot-auth-resume*/'
+    + _AUTH_FS_BOOT
+    + _AUTH_DIR
+    + ';const _j=JSON.parse(_fs.readFileSync(_path.join(_dir,"auth.json"),"utf8")),'
+    '_tok=_j&&_j.accessToken;if(!_tok)return null;'
+    'return JSON.parse(Buffer.from(String(_tok).split(".")[1],"base64").toString()).sub||null'
+    '}catch(_e){return null}})()'
+)
+# nal_agent_retries：额度 upgrade/payment 抛 ActionRequiredError 后等待 sc 写 auth.json，再内部 ResumeAction
+_CATCH_UPGRADE_WAIT = (
+    '/*agentcli-hot-auth-wait*/try{if(t instanceof R&&("upgrade"===t.action||"payment"===t.action)){'
+    + _AUTH_FS_BOOT
+    + _AUTH_DIR
+    + ',_auth=_path.join(_dir,"auth.json"),_fail=globalThis.__agentcliRunSub;'
+    "for(let _i=0;_i<120&&!t.agentcliAuthReady;_i++){try{const _sub="
+    + _READ_AUTH_SUB_EXPR
+    + ';if(_sub&&_sub!==_fail){t.agentcliAuthReady=1;break}}catch(_e){}'
+    'if(_i<119){const _t0=Date.now();while(Date.now()-_t0<500);}}'
+    '}catch(_e){}'
+)
+_QE_UPGRADE_RESUME = (
+    ':d instanceof R&&("upgrade"===d.action||"payment"===d.action)&&'
+    '(d.agentcliAuthReady||(function(){try{const _sub='
+    + _READ_AUTH_SUB_EXPR
+    + ',_fail=globalThis.__agentcliRunSub;return!!(_sub&&_fail&&_sub!==_fail)}catch(_e){return!1}})())'
+    '?{action:"retry",countAsServerError:!0,countAsTransportError:!1}'
+    ':d instanceof x||d instanceof R||d instanceof Q?{action:"throw",error:d}'
 )
 
 NUDGE_MARKER = "/*agentcli-sc-nudge*/"

@@ -284,7 +284,7 @@ def _check_usage_ok(
         hint = api.short_error(exc)
         print(f"校验新号用量失败: {hint}")
         set_action("ok", f"pull 已写入，用量校验失败: {hint}")
-        # auth 已换新；末次校验失败仍视为成功，由用户/Agent 自行重试
+        # auth 已换新；末次校验失败仍视为成功，由 Agent 内部 ResumeAction 续跑
         return attempt >= attempts
 
 

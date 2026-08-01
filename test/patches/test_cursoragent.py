@@ -116,6 +116,9 @@ def test_hot_auth_on_virgin_index_matches_expectations(virgin_index: str) -> Non
     assert "ephemeralToken:R," not in out
     assert "setEphemeralToken:e=>{R=e}" not in out
     assert "this.cachedAccessToken=t.accessToken" not in out
+    assert "agentcli-hot-auth-wait" in out
+    assert "agentcli-hot-auth-resume" in out
+    assert "__agentcliRunSub=_sub" in out
 
 
 def test_hot_auth_idempotent_on_virgin(virgin_index: str) -> None:
@@ -357,6 +360,7 @@ def test_disk_bearer_uses_mutable_binding() -> None:
     from patches.cursor.cursor_chunks import _DISK_BEARER_OVERRIDE
 
     assert "_agentcliBearer=_j.accessToken" in _DISK_BEARER_OVERRIDE
+    assert "__agentcliRunSub=_sub" in _DISK_BEARER_OVERRIDE
     assert "l=_j.accessToken" not in _DISK_BEARER_OVERRIDE
 
 
