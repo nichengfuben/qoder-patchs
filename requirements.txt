@@ -3,7 +3,7 @@
 
 typer>=0.12.0
 rich>=13.0.0
-echotools[console]>=2.3.100
+echotools[console]>=2.3.103
 platformdirs>=4.0.0
 pydantic>=2.0.0
 tomli>=2.0.0; python_version < "3.11"
