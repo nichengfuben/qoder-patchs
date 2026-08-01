@@ -2,7 +2,6 @@ from __future__ import annotations
 
 """强制 UTF-8 标准流，避免 Windows GBK 与 Agent UTF-8 互解乱码。"""
 
-import io
 import os
 import sys
 
@@ -12,6 +11,12 @@ def ensure_utf8_stdio() -> None:
     os.environ["PYTHONUTF8"] = "1"
     os.environ["PYTHONIOENCODING"] = "utf-8"
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
+    try:
+        from cli.echotools_bridge import _ensure_windows_console
+
+        _ensure_windows_console()
+    except Exception:
+        pass
     for name in ("stdout", "stderr"):
         stream = getattr(sys, name, None)
         if stream is None:
@@ -22,6 +27,8 @@ def ensure_utf8_stdio() -> None:
         except Exception:
             pass
         try:
+            import io
+
             buf = getattr(stream, "buffer", None)
             if buf is None:
                 continue
