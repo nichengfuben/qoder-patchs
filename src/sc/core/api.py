@@ -294,4 +294,13 @@ def parse_usage(data: Dict[str, Any]) -> Dict[str, Any]:
 def is_limit_reached(usage: Dict[str, Any], threshold: float) -> bool:
     if usage.get("is_unlimited"):
         return False
-    return float(usage.get("total_pct") or 0) >= float(threshold)
+    total = float(usage.get("total_pct") or 0)
+    auto = float(usage.get("auto_pct") or 0)
+    api = float(usage.get("api_pct") or 0)
+    # Cursor 服务端按 auto/api 单项拒 Agent；total=(auto+api)/2 会严重滞后
+    if total >= threshold or auto >= threshold or api >= threshold:
+        return True
+    membership = str(usage.get("membership") or "").lower()
+    if membership == "free" and auto >= 50.0:
+        return True
+    return False

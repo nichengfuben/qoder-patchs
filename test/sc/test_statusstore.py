@@ -152,6 +152,81 @@ def test_stale_badge_when_auto_dead() -> None:
     assert "42.0%" in plain
 
 
+def test_display_state_switching_not_stale(tmp_path, monkeypatch) -> None:
+    import time as _time
+
+    from sc.run import status_store
+
+    monkeypatch.setattr(status_store, "sc_home_dir", lambda: tmp_path)
+    monkeypatch.setattr(status_store, "migrate_legacy_sc_home", lambda: None)
+
+    now = _time.time()
+    inst_path = tmp_path / "sc_instances.json"
+    inst_path.write_text(
+        """
+{
+  "leader_id": "lid1",
+  "instances": {
+    "lid1": {"pid": 99999, "heartbeat_at": %f, "started_at": %f, "role": "leader"}
+  },
+  "usage": {"total_pct": 0.0, "published_at": %f, "leader_id": "lid1", "usage_seq": 1}
+}
+"""
+        % (now, now, now - 30),
+        encoding="utf-8",
+    )
+    status_store.write_status(
+        action="switching",
+        message="换号中",
+        total_pct=0.0,
+        usage_fetched_at=now - 30,
+        poll_interval=5,
+        updated_at=now,
+    )
+    monkeypatch.setattr(
+        "sc.run.instances._pid_alive", lambda _pid: True, raising=False
+    )
+    st = status_store.display_state()
+    assert st["auto_running"] is True
+    assert st["_stale"] is False
+
+
+def test_display_state_dead_leader_is_stale(tmp_path, monkeypatch) -> None:
+    import time as _time
+
+    from sc.run import status_store
+
+    monkeypatch.setattr(status_store, "sc_home_dir", lambda: tmp_path)
+    monkeypatch.setattr(status_store, "migrate_legacy_sc_home", lambda: None)
+
+    now = _time.time()
+    inst_path = tmp_path / "sc_instances.json"
+    inst_path.write_text(
+        """
+{
+  "leader_id": "lid1",
+  "instances": {
+    "lid1": {"pid": 1, "heartbeat_at": %f, "started_at": %f, "role": "leader"}
+  }
+}
+"""
+        % (now - 3600, now - 3600),
+        encoding="utf-8",
+    )
+    status_store.write_status(
+        action="polling",
+        total_pct=0.0,
+        usage_fetched_at=now - 3600,
+        poll_interval=5,
+    )
+    monkeypatch.setattr(
+        "sc.run.instances._pid_alive", lambda _pid: False, raising=False
+    )
+    st = status_store.display_state()
+    assert st["auto_running"] is False
+    assert st["_stale"] is True
+
+
 def test_write_status_concurrent_no_raise(tmp_path, monkeypatch) -> None:
     import threading
     from pathlib import Path

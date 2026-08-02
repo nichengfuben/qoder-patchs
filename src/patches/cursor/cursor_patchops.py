@@ -2,7 +2,6 @@ from __future__ import annotations
 
 """Cursor Agent patch operations (index.js chunks, boot, launchers)."""
 
-import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -31,10 +30,10 @@ from patches.cursor.cursor_chunks import (
     _STATUS_INTERVAL_V1,
     _STATUS_INTERVAL_V2,
     apply_statusline_interval_text,
-    inject_nudge as _inject_nudge,
     restore_statusline_interval_text,
-    strip_nudge as _strip_nudge,
 )
+from utils.cursor_nudge import inject_nudge as _inject_nudge, strip_nudge as _strip_nudge
+from utils.js_syntax import js_syntax_checker_scripts, run_js_syntax_checker
 from patches.cursor.cursor_launchers import (
     _AG_CMD,
     _BOOT_BLOCK,
@@ -290,6 +289,7 @@ def _strip_slash(bundle_dir: Path, dry_run: bool) -> tuple[int, list[Path], list
         logger.info("Removed /sc slash from {}", chunk)
     return hits, files, backups
 
+
 def assert_js_syntax(path: Path, source: str) -> None:
     """用独立 checker + vm.Script 校验。
 
@@ -305,50 +305,17 @@ def assert_js_syntax(path: Path, source: str) -> None:
                 node_exe = cand
                 break
     tmp_path = None
-    checker_paths: list[str] = []
-    checkers = (
-        (
-            "wrap",
-            "const fs=require('fs');const vm=require('vm');const Module=require('module');\n"
-            "try{new vm.Script(Module.wrap(fs.readFileSync(process.argv[2],'utf8')));}\n"
-            "catch(e){console.error(String(e&&e.message||e));process.exit(1)}\n",
-        ),
-        (
-            "bare",
-            "const fs=require('fs');const vm=require('vm');\n"
-            "try{new vm.Script(fs.readFileSync(process.argv[2],'utf8'));}\n"
-            "catch(e){console.error(String(e&&e.message||e));process.exit(1)}\n",
-        ),
-    )
     try:
         with tempfile.NamedTemporaryFile(
             "w", suffix=".js", delete=False, encoding="utf-8"
         ) as tmp:
             tmp.write(source)
             tmp_path = tmp.name
-        for mode, checker_src in checkers:
-            with tempfile.NamedTemporaryFile(
-                "w", suffix=".js", delete=False, encoding="utf-8"
-            ) as chk:
-                chk.write(checker_src)
-                checker_paths.append(chk.name)
-            proc = subprocess.run(
-                [str(node_exe), checker_paths[-1], tmp_path],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            if proc.returncode != 0:
-                err = (proc.stderr or proc.stdout or "").strip().splitlines()
-                msg = err[0] if err else "unknown syntax error"
-                raise RuntimeError(
-                    f"JS syntax check failed on {path.name} ({mode}): {msg}"
-                )
+        for mode, checker_src in js_syntax_checker_scripts():
+            run_js_syntax_checker(node_exe, tmp_path, mode, checker_src)
     finally:
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
-        for checker_path in checker_paths:
-            Path(checker_path).unlink(missing_ok=True)
 
 
 def patch_boot_cmd(root: Path, dry_run: bool) -> tuple[bool, Optional[Path], Optional[Path]]:

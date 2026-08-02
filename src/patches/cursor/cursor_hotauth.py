@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import Optional
 
 from patches.cursor.cursor_chunks import (
-    NUDGE_MARKER,
     _FOOTER_KEEP_NEW, _FOOTER_KEEP_OLD, _SLASH_ANCHOR, _SLASH_INJECT,
     _STATUS_INTERVAL_NEW, _STATUS_INTERVAL_OLD,
 )
 from patches.cursor.cursor_repls import _REPLACEMENTS
+from utils.cursor_nudge import NUDGE_MARKER
 
 MARKER = "/*agentcli-hot-auth*/"
 DISK_MARKER = "/*agentcli-hot-auth-disk*/"

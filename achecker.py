@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Set, Tuple, Dict, Any
 
-from echotools.logger import configure, get_logger
+from echotools import configure, get_logger
 
 # ============================================================
 # 日志配置

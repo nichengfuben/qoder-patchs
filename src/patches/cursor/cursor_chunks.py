@@ -255,8 +255,14 @@ _READ_AUTH_SUB_EXPR = (
     'return JSON.parse(Buffer.from(String(_tok).split(".")[1],"base64").toString()).sub||null'
     '}catch(_e){return null}})()'
 )
-# nal_agent_retries：额度 upgrade/payment 后等待 auth.json 换号（独立函数，避免 catch 内联破坏语法）
-_AGENTCLI_WAIT_AUTH_FN = (
+_READ_AUTH_TOK_EXPR = (
+    '(function(){try{/*agentcli-hot-auth-resume-tok*/'
+    + _AUTH_FS_BOOT
+    + _AUTH_DIR
+    + ';const _j=JSON.parse(_fs.readFileSync(_path.join(_dir,"auth.json"),"utf8"));'
+    'return _j&&_j.accessToken||null}catch(_e){return null}})()'
+)
+_AGENTCLI_WAIT_AUTH_FN_V1 = (
     'function _agentcliWaitAuthUpgrade(t){try{/*agentcli-hot-auth-wait*/'
     'if(!(t instanceof R)||"upgrade"!==t.action&&"payment"!==t.action||t.agentcliAuthReady)return;'
     + _AUTH_FS_BOOT
@@ -268,8 +274,78 @@ _AGENTCLI_WAIT_AUTH_FN = (
     'if(_i<119){const _t0=Date.now();while(Date.now()-_t0<500);}}'
     '}catch(_e){}}'
 )
+_AGENTCLI_UPGRADE_GUARD = (
+    'var _up=t instanceof R&&("upgrade"===t.action||"payment"===t.action)||'
+    't&&("upgrade"===t.action||"payment"===t.action);'
+    'if(!_up){try{var _ec=t&&t.displayInfo&&t.displayInfo.errorDetails&&t.displayInfo.errorDetails.error;'
+    '_up=7===_ec||8===_ec||9===_ec||10===_ec}catch(_e){}}'
+    'if(!_up||t.agentcliAuthReady)return;'
+)
+_AGENTCLI_WAIT_AUTH_FN_V2 = (
+    'function _agentcliWaitAuthUpgrade(t){try{/*agentcli-hot-auth-wait*/'
+    'if(!(t instanceof R)||"upgrade"!==t.action&&"payment"!==t.action||t.agentcliAuthReady)return;'
+    + _AUTH_FS_BOOT
+    + _AUTH_DIR
+    + ';try{_fs.writeFileSync(_path.join(_dir,"agentcli-need-switch.json"),'
+    'JSON.stringify({ts:Date.now(),action:t.action}));}catch(_e){}'
+    'if(!globalThis.__agentcliRunSub){try{const _j0=JSON.parse(_fs.readFileSync('
+    '_path.join(_dir,"auth.json"),"utf8")),_tok0=_j0&&_j0.accessToken;'
+    'if(_tok0){const _s0=JSON.parse(Buffer.from(String(_tok0).split(".")[1],"base64").toString()).sub;'
+    'if(_s0)globalThis.__agentcliRunSub=_s0;}}catch(_e){}}'
+    'const _fail=globalThis.__agentcliRunSub;'
+    'for(let _i=0;_i<120&&!t.agentcliAuthReady;_i++){const _sub='
+    + _READ_AUTH_SUB_EXPR
+    + ';if(_fail&&_sub&&_sub!==_fail){t.agentcliAuthReady=1;break}'
+    'if(_i<119){const _t0=Date.now();while(Date.now()-_t0<500);}}'
+    'if(t.agentcliAuthReady){try{_fs.unlinkSync(_path.join(_dir,"agentcli-need-switch.json"));}catch(_e){}}'
+    '}catch(_e){}}'
+)
+_AGENTCLI_WAIT_AUTH_FN_V3 = (
+    'function _agentcliWaitAuthUpgrade(t){try{/*agentcli-hot-auth-wait*/'
+    + _AGENTCLI_UPGRADE_GUARD
+    + _AUTH_FS_BOOT
+    + _AUTH_DIR
+    + ';try{_fs.writeFileSync(_path.join(_dir,"agentcli-need-switch.json"),'
+    'JSON.stringify({ts:Date.now(),action:t.action||"upgrade"}));}catch(_e){}'
+    'if(!globalThis.__agentcliRunSub){try{const _j0=JSON.parse(_fs.readFileSync('
+    '_path.join(_dir,"auth.json"),"utf8")),_tok0=_j0&&_j0.accessToken;'
+    'if(_tok0){const _s0=JSON.parse(Buffer.from(String(_tok0).split(".")[1],"base64").toString()).sub;'
+    'if(_s0)globalThis.__agentcliRunSub=_s0;}}catch(_e){}}'
+    'const _fail=globalThis.__agentcliRunSub;'
+    'for(let _i=0;_i<120&&!t.agentcliAuthReady;_i++){const _sub='
+    + _READ_AUTH_SUB_EXPR
+    + ';if(_fail&&_sub&&_sub!==_fail){t.agentcliAuthReady=1;globalThis.__agentcliAuthSwitched=1;break}'
+    'if(_i<119){const _t0=Date.now();while(Date.now()-_t0<500);}}'
+    'if(t.agentcliAuthReady){try{_fs.unlinkSync(_path.join(_dir,"agentcli-need-switch.json"));}catch(_e){}}'
+    '}catch(_e){}}'
+)
+_AGENTCLI_WAIT_AUTH_FN = (
+    'function _agentcliWaitAuthUpgrade(t){try{/*agentcli-hot-auth-wait*/'
+    + _AGENTCLI_UPGRADE_GUARD
+    + _AUTH_FS_BOOT
+    + _AUTH_DIR
+    + ';const _auth=_path.join(_dir,"auth.json");'
+    'try{_fs.writeFileSync(_path.join(_dir,"agentcli-need-switch.json"),'
+    'JSON.stringify({ts:Date.now(),action:t.action||"upgrade"}));}catch(_e){}'
+    'let _failSub=globalThis.__agentcliRunSub,_failTok=null;'
+    'try{const _jF=JSON.parse(_fs.readFileSync(_auth,"utf8"));'
+    '_failTok=_jF&&_jF.accessToken||null;'
+    'if(!_failSub&&_failTok){try{_failSub=JSON.parse(Buffer.from(String(_failTok).split(".")[1],"base64").toString()).sub||null}catch(_e){}}'
+    '}catch(_e){}'
+    'globalThis.__agentcliFailTok=_failTok;'
+    'for(let _i=0;_i<120&&!t.agentcliAuthReady;_i++){'
+    'let _sub=null,_tok=null;'
+    'try{const _j=JSON.parse(_fs.readFileSync(_auth,"utf8"));'
+    '_tok=_j&&_j.accessToken||null;'
+    'if(_tok){try{_sub=JSON.parse(Buffer.from(String(_tok).split(".")[1],"base64").toString()).sub||null}catch(_e){}}'
+    '}catch(_e){}'
+    'if(_tok&&_failTok&&_tok!==_failTok){t.agentcliAuthReady=1;globalThis.__agentcliAuthSwitched=1;break}'
+    'if(_failSub&&_sub&&_sub!==_failSub){t.agentcliAuthReady=1;globalThis.__agentcliAuthSwitched=1;break}'
+    'if(_i<119){const _t0=Date.now();while(Date.now()-_t0<500);}}'
+    'if(t.agentcliAuthReady){try{_fs.unlinkSync(_path.join(_dir,"agentcli-need-switch.json"));}catch(_e){}}'
+    '}catch(_e){}}'
+)
 _CATCH_UPGRADE_CALL = "_agentcliWaitAuthUpgrade(t);"
-# 旧版内联 wait（会触发 Unexpected token 'catch'）→ 单行调用
 _CATCH_UPGRADE_WAIT_INLINE = (
     '/*agentcli-hot-auth-wait*/try{if(t instanceof R&&("upgrade"===t.action||"payment"===t.action)){'
     + _AUTH_FS_BOOT
@@ -281,9 +357,19 @@ _CATCH_UPGRADE_WAIT_INLINE = (
     'if(_i<119){const _t0=Date.now();while(Date.now()-_t0<500);}}'
     '}catch(_e){}'
 )
-_QE_UPGRADE_RESUME = (
+_QE_UPGRADE_RESUME_V3 = (
     ':d instanceof R&&("upgrade"===d.action||"payment"===d.action)&&'
     '(d.agentcliAuthReady||(function(){try{const _sub='
+    + _READ_AUTH_SUB_EXPR
+    + ',_fail=globalThis.__agentcliRunSub;return!!(_sub&&_fail&&_sub!==_fail)}catch(_e){return!1}})())'
+    '?{action:"retry",countAsServerError:!0,countAsTransportError:!1}'
+    ':d instanceof x||d instanceof R||d instanceof Q?{action:"throw",error:d}'
+)
+_QE_UPGRADE_RESUME = (
+    ':d instanceof R&&("upgrade"===d.action||"payment"===d.action)&&'
+    '(d.agentcliAuthReady||(function(){try{const _tok='
+    + _READ_AUTH_TOK_EXPR
+    + ',_ft=globalThis.__agentcliFailTok;if(_tok&&_ft&&_tok!==_ft)return!0;const _sub='
     + _READ_AUTH_SUB_EXPR
     + ',_fail=globalThis.__agentcliRunSub;return!!(_sub&&_fail&&_sub!==_fail)}catch(_e){return!1}})())'
     '?{action:"retry",countAsServerError:!0,countAsTransportError:!1}'
@@ -294,132 +380,4 @@ _QE_RESUME_THROW = (
 )
 _QE_RESUME_VIRGIN = '{action:"throw",error:d}' + _QE_RESUME_THROW
 _QE_RESUME_PATCHED = '{action:"throw",error:d}' + _QE_UPGRADE_RESUME
-
-NUDGE_MARKER = "/*agentcli-sc-nudge*/"
-# 锚点落在「一条 const a=...,b=...,c=...」声明链内，只能插入合法 declarator，不能插分号
-# （分号会截断 const，后面 wr/kr 变成未声明赋值 → 渲染时 ReferenceError 并喷源码）
-_NUDGE_ANCHOR = ",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o),wr="
-# 必须先确认 br.submitMessage 可用再删信号；否则首秒 br 为空会吞掉 nudge，界面卡在旧额度错误
-_NUDGE_EFFECT = (
-    NUDGE_MARKER
-    + "_agentcliNudge=(0,c.useEffect)((()=>{const _iv=setInterval((()=>{try{"
-    'const _fs=(process.getBuiltinModule&&(process.getBuiltinModule("node:fs")'
-    '||process.getBuiltinModule("fs")))||require("node:fs");'
-    'const _path=(process.getBuiltinModule&&(process.getBuiltinModule("node:path")'
-    '||process.getBuiltinModule("path")))||require("node:path");'
-    'const _os=(process.getBuiltinModule&&(process.getBuiltinModule("node:os")'
-    '||process.getBuiltinModule("os")))||require("node:os");'
-    'const _p=_path.join(_os.homedir(),".cursor","sc_nudge.json");'
-    "if(!_fs.existsSync(_p))return;"
-    'const _j=JSON.parse(_fs.readFileSync(_p,"utf8"));'
-    'if(!_j||"continue"!==_j.action)return;'
-    "const _ts=Number(_j.ts||0);"
-    "if(!_ts||Date.now()-_ts>12e4)return void _fs.unlinkSync(_p);"
-    'if(null==br||"function"!=typeof br.submitMessage)return;'
-    'const _t=String(_j.text||"继续");'
-    "br.submitMessage(_t);"
-    "try{_fs.unlinkSync(_p)}catch(_e){}"
-    "}catch(_e){}}),1e3);return()=>clearInterval(_iv)}),[br])"
-)
-_NUDGE_INJECT = (
-    ",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o)," + _NUDGE_EFFECT + ",wr="
-)
-
-
-def _nudge_strip_region(text: str) -> str:
-    if NUDGE_MARKER not in text:
-        return text
-    # 当前格式：...,yr=...,/*nudge*/_agentcliNudge=(0,c.useEffect)(...),wr=
-    start = text.find(",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o)," + NUDGE_MARKER)
-    if start >= 0:
-        end = text.find(",wr=", start)
-        if end > start:
-            return text[:start] + _NUDGE_ANCHOR + text[end + len(",wr=") :]
-    # 旧分号语句格式（会弄挂渲染）：...,yr=...;/*nudge*/...;wr=
-    start = text.find(",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o);" + NUDGE_MARKER)
-    if start >= 0:
-        end = text.find(";wr=", start)
-        if end > start:
-            return text[:start] + _NUDGE_ANCHOR + text[end + len(";wr=") :]
-    # 更旧：裸 useEffect 塞进 const 列表（Unexpected token '('）
-    legacy = "," + NUDGE_MARKER
-    start = text.find(legacy)
-    if start < 0:
-        start = text.find(NUDGE_MARKER)
-    end = text.find(",yr=(0,$.eg)(e,We,br,Wo.inHistory,_o)", start) if start >= 0 else -1
-    if start >= 0 and end > start:
-        return text[:start] + text[end:]
-    return text
-
-
-def inject_nudge(bundle_dir, dry_run: bool = False):
-    """注入换号后自动 submitMessage(继续) 的 UI 轮询。"""
-    import time
-    from pathlib import Path
-
-    from loguru import logger
-    from patches.cursor.cursor_patchops import assert_js_syntax
-
-    files: list = []
-    backups: list = []
-    hits = 0
-    root = Path(bundle_dir)
-    for chunk in root.glob("*.index.js"):
-        try:
-            text = chunk.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        if _NUDGE_ANCHOR not in text and NUDGE_MARKER not in text:
-            continue
-        working = _nudge_strip_region(text)
-        if _NUDGE_ANCHOR not in working:
-            continue
-        if _NUDGE_INJECT in working:
-            hits += 1
-            continue
-        hits += 1
-        if dry_run:
-            continue
-        new_text = working.replace(_NUDGE_ANCHOR, _NUDGE_INJECT, 1)
-        assert_js_syntax(chunk, new_text)
-        bak = chunk.with_suffix(chunk.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
-        bak.write_text(text, encoding="utf-8")
-        backups.append(bak)
-        chunk.write_text(new_text, encoding="utf-8")
-        files.append(chunk)
-        logger.info("Injected sc continue-nudge into {}", chunk)
-    return hits, files, backups
-
-
-def strip_nudge(bundle_dir, dry_run: bool = False):
-    import time
-    from pathlib import Path
-
-    from loguru import logger
-    from patches.cursor.cursor_patchops import assert_js_syntax
-
-    files: list = []
-    backups: list = []
-    hits = 0
-    for chunk in Path(bundle_dir).glob("*.index.js"):
-        try:
-            text = chunk.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        if NUDGE_MARKER not in text:
-            continue
-        new_text = _nudge_strip_region(text)
-        if new_text == text:
-            continue
-        hits += 1
-        if dry_run:
-            continue
-        assert_js_syntax(chunk, new_text)
-        bak = chunk.with_suffix(chunk.suffix + f".bak.{time.strftime('%Y%m%d%H%M%S')}")
-        bak.write_text(text, encoding="utf-8")
-        backups.append(bak)
-        chunk.write_text(new_text, encoding="utf-8")
-        files.append(chunk)
-        logger.info("Removed sc continue-nudge from {}", chunk)
-    return hits, files, backups
 

@@ -66,6 +66,21 @@ def test_is_limit_reached_uses_usage_threshold() -> None:
     assert not is_limit_reached({"total_pct": 100.0, "is_unlimited": True}, 95.0)
 
 
+def test_is_limit_reached_auto_api_individual() -> None:
+    usage = {"total_pct": 50.0, "auto_pct": 100.0, "api_pct": 0.0, "is_unlimited": False}
+    assert is_limit_reached(usage, 90.0)
+    assert not is_limit_reached(
+        {"total_pct": 25.0, "auto_pct": 40.0, "api_pct": 10.0, "is_unlimited": False}, 90.0
+    )
+
+
+def test_is_limit_reached_free_auto_half() -> None:
+    assert is_limit_reached(
+        {"total_pct": 25.0, "auto_pct": 50.0, "api_pct": 0.0, "membership": "free", "is_unlimited": False},
+        90.0,
+    )
+
+
 def test_key_pool_switch_on_daily_threshold() -> None:
     pool = KeyPool(["sc_aaa", "sc_bbb"], threshold=80, refresh_interval=60)
     cur = pool.current
@@ -74,3 +89,29 @@ def test_key_pool_switch_on_daily_threshold() -> None:
     assert pool.should_switch(cur)
     nxt = pool.switch_next()
     assert nxt is not None and nxt.key == "sc_bbb"
+
+
+def test_agent_switch_requested_fresh_signal(tmp_path, monkeypatch) -> None:
+    import time
+
+    from sc.run import pull
+
+    auth_dir = tmp_path / "Cursor"
+    auth_dir.mkdir()
+    monkeypatch.setattr(pull, "agent_switch_request_path", lambda: auth_dir / pull.AGENT_SWITCH_FILE)
+    sig = auth_dir / pull.AGENT_SWITCH_FILE
+    sig.write_text('{"ts": %d, "action": "upgrade"}' % int(time.time() * 1000), encoding="utf-8")
+    assert pull.agent_switch_requested()
+    pull.clear_agent_switch_request()
+    assert not pull.agent_switch_requested()
+
+
+def test_agent_switch_requested_stale_ignored(tmp_path, monkeypatch) -> None:
+    from sc.run import pull
+
+    auth_dir = tmp_path / "Cursor"
+    auth_dir.mkdir()
+    monkeypatch.setattr(pull, "agent_switch_request_path", lambda: auth_dir / pull.AGENT_SWITCH_FILE)
+    sig = auth_dir / pull.AGENT_SWITCH_FILE
+    sig.write_text('{"ts": 1, "action": "upgrade"}', encoding="utf-8")
+    assert not pull.agent_switch_requested(max_age_sec=120.0)

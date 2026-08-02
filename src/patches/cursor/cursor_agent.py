@@ -31,8 +31,8 @@ from patches.cursor.cursor_hotauth import (
     optional_uichunk_ok,
     uichunk_texts,
 )
+from utils.cursor_nudge import NUDGE_MARKER
 from patches.cursor.cursor_chunks import (
-    NUDGE_MARKER,
     _DISK_BEARER_OVERRIDE,
     _FOOTER_KEEP_OLD,
     _STATUS_INTERVAL_OLD,

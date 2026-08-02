@@ -2,14 +2,16 @@ from __future__ import annotations
 
 """Token pull helpers: Key pool, acquire, write auth."""
 
+import json
 import os
 import time
+from pathlib import Path
 from typing import Optional
 
 from sc.core import api, auth
 from sc.core.config import load_config
 from sc.core.keys import KeyPool, KeyState
-from sc.core.paths import auth_json_path, config_json_path
+from sc.core.paths import auth_json_path, config_json_path, cursor_auth_dir
 from sc.run import instances as inst
 from sc.run.status_store import set_action, status_json_path, write_status
 
@@ -22,6 +24,35 @@ def usage_threshold(cfg: dict) -> float:
     if cfg.get("usage_threshold") is not None:
         return float(cfg.get("usage_threshold"))
     return 90.0
+
+
+AGENT_SWITCH_FILE = "agentcli-need-switch.json"
+
+
+def agent_switch_request_path() -> Path:
+    return cursor_auth_dir() / AGENT_SWITCH_FILE
+
+
+def agent_switch_requested(*, max_age_sec: float = 120.0) -> bool:
+    """Agent 额度 upgrade/payment 报错时写入；leader 据此立即换号（非 nudge）。"""
+    path = agent_switch_request_path()
+    if not path.is_file():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        ts_ms = float(data.get("ts") or 0)
+        if ts_ms <= 0:
+            return True
+        return (time.time() * 1000 - ts_ms) <= max_age_sec * 1000
+    except Exception:
+        return True
+
+
+def clear_agent_switch_request() -> None:
+    try:
+        agent_switch_request_path().unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def make_pool(cfg: dict) -> KeyPool:
@@ -295,9 +326,15 @@ def pull_until_acceptable_usage(
     *,
     max_attempts: Optional[int] = None,
     title_prefix: str = "新号用量",
+    instance_id: Optional[str] = None,
 ) -> bool:
     attempts = max_attempts if max_attempts is not None else int(cfg.get("max_retry_per_pull") or 3)
     for attempt in range(1, attempts + 1):
+        if instance_id:
+            try:
+                inst.heartbeat(instance_id)
+            except Exception:
+                pass
         if not do_pull_and_write(pool, cfg):
             print(f"换号失败 ({attempt}/{attempts})" if attempt > 1 else "自动换号失败")
             return False

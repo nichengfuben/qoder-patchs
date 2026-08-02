@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from patches.cursor.cursor_chunks import (
     _AGENTCLI_WAIT_AUTH_FN,
+    _AGENTCLI_WAIT_AUTH_FN_V1,
+    _AGENTCLI_WAIT_AUTH_FN_V2,
+    _AGENTCLI_WAIT_AUTH_FN_V3,
     _CATCH_UPGRADE_CALL,
     _CATCH_UPGRADE_WAIT_INLINE,
     _DISK_BEARER_OVERRIDE,
@@ -12,6 +15,7 @@ from patches.cursor.cursor_chunks import (
     _QE_RESUME_PATCHED,
     _QE_RESUME_VIRGIN,
     _QE_UPGRADE_RESUME,
+    _QE_UPGRADE_RESUME_V3,
 )
 
 _GET_ACCESS_HOT = (
@@ -185,6 +189,54 @@ _REPLACEMENTS: tuple[tuple[str, str], ...] = (
         "return t}"
         + _AGENTCLI_WAIT_AUTH_FN
         + "function Qe(e,t,n,r,s,i,o,a,l){",
+    ),
+    (
+        _AGENTCLI_WAIT_AUTH_FN_V1,
+        _AGENTCLI_WAIT_AUTH_FN,
+    ),
+    (
+        _AGENTCLI_WAIT_AUTH_FN_V2,
+        _AGENTCLI_WAIT_AUTH_FN,
+    ),
+    (
+        _AGENTCLI_WAIT_AUTH_FN_V3,
+        _AGENTCLI_WAIT_AUTH_FN,
+    ),
+    (
+        "if(C){_agentcliWaitAuthUpgrade({action:\"upgrade\"});"
+        "if(globalThis.__agentcliAuthSwitched){globalThis.__agentcliAuthSwitched=0;return!1}"
+        "return h(C),!0}",
+        'if(C){_agentcliWaitAuthUpgrade({action:"upgrade"});'
+        "if(globalThis.__agentcliAuthSwitched){globalThis.__agentcliAuthSwitched=0;return!0}"
+        "return h(C),!0}",
+    ),
+    (
+        "if(C)return h(C),!0",
+        'if(C){_agentcliWaitAuthUpgrade({action:"upgrade"});'
+        "if(globalThis.__agentcliAuthSwitched){globalThis.__agentcliAuthSwitched=0;return!0}"
+        "return h(C),!0}",
+    ),
+    (
+        'if(P.has(t)){try{_agentcliWaitAuthUpgrade({action:"upgrade"})}catch(_e){}return new R(j(e,u),"upgrade",d)}',
+        'if(P.has(t)){const _r=new R(j(e,u),"upgrade",d);try{_agentcliWaitAuthUpgrade(_r)}catch(_e){}return _r}',
+    ),
+    (
+        'if(P.has(t)){try{_agentcliWaitAuthUpgrade({action:"upgrade"})}catch(_e){}'
+        'return new R(j(e,u),"upgrade",d)}',
+        'if(P.has(t)){const _r=new R(j(e,u),"upgrade",d);try{_agentcliWaitAuthUpgrade(_r)}catch(_e){}return _r}',
+    ),
+    (
+        'if(J.has(t)){try{_agentcliWaitAuthUpgrade({action:"payment"})}catch(_e){}return new R(j(e,u),"payment",d)}',
+        'if(J.has(t)){const _r=new R(j(e,u),"payment",d);try{_agentcliWaitAuthUpgrade(_r)}catch(_e){}return _r}',
+    ),
+    (
+        'if(J.has(t)){try{_agentcliWaitAuthUpgrade({action:"payment"})}catch(_e){}'
+        'return new R(j(e,u),"payment",d)}',
+        'if(J.has(t)){const _r=new R(j(e,u),"payment",d);try{_agentcliWaitAuthUpgrade(_r)}catch(_e){}return _r}',
+    ),
+    (
+        '{action:"throw",error:d}' + _QE_UPGRADE_RESUME_V3,
+        '{action:"throw",error:d}' + _QE_UPGRADE_RESUME,
     ),
     (
         _QE_RESUME_PATCHED,

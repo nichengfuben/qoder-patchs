@@ -100,6 +100,47 @@ _INSTANCES = "sc_instances.json"
 _STALE_AFTER_SEC = 20.0
 
 
+def _usage_stale_after(st: Dict[str, Any], *, leader_ok: bool) -> float:
+    """用量快照过期阈值：换号/拉号期间放宽，避免误报 STALE。"""
+    if not leader_ok:
+        return _STALE_AFTER_SEC
+    action = str(st.get("action") or "")
+    if action in ("switching", "pulling"):
+        try:
+            from sc.run.instances import STALE_GRACE_SEC
+
+            return float(STALE_GRACE_SEC)
+        except Exception:
+            return 120.0
+    try:
+        interval = float(st.get("poll_interval") or 5)
+    except Exception:
+        interval = 5.0
+    return max(_STALE_AFTER_SEC, interval * 4)
+
+
+def _freshness_ts(st: Dict[str, Any], *, leader_ok: bool) -> float:
+    """leader 活跃时，set_action 更新的 updated_at 也算新鲜（换号中尚无新用量）。"""
+    fetched = float(st.get("usage_fetched_at") or 0)
+    updated = float(st.get("updated_at") or 0)
+    if leader_ok and updated > fetched:
+        return updated
+    return fetched
+
+
+def _leader_hb_from_doc(doc: Dict[str, Any]) -> float:
+    lid = doc.get("leader_id")
+    if not lid:
+        return 0.0
+    info = (doc.get("instances") or {}).get(lid)
+    if not isinstance(info, dict):
+        return 0.0
+    try:
+        return float(info.get("heartbeat_at") or 0)
+    except Exception:
+        return 0.0
+
+
 def _leader_ttl() -> float:
     """与 instances.STALE_SEC 对齐，避免展示层与选举层判定不一致。"""
     try:
@@ -161,11 +202,15 @@ def display_state() -> Dict[str, Any]:
                 st["usage_fetched_at"] = published
             if doc.get("leader_id"):
                 st["leader_id"] = doc.get("leader_id")
-    fetched = float(st.get("usage_fetched_at") or 0)
-    age = (now - fetched) if fetched > 0 else 1e9
     leader_ok = _leader_fresh(doc, now=now)
+    fetched = _freshness_ts(st, leader_ok=leader_ok)
+    age = (now - fetched) if fetched > 0 else 1e9
+    stale_after = _usage_stale_after(st, leader_ok=leader_ok)
     st["auto_running"] = leader_ok
-    st["_stale"] = (not leader_ok) or age > _STALE_AFTER_SEC
+    hb = _leader_hb_from_doc(doc)
+    if hb > 0:
+        st["leader_heartbeat_at"] = hb
+    st["_stale"] = (not leader_ok) or age > stale_after
     if not st.get("action") or st.get("action") == "idle":
         if leader_ok:
             st["action"] = "polling"

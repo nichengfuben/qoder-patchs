@@ -19,6 +19,8 @@ from sc.run.auto import (
     write_pid,
 )
 from sc.run.pull import (
+    agent_switch_requested,
+    clear_agent_switch_request,
     do_pull_and_write,
     make_pool,
     pull_until_acceptable_usage,
@@ -120,15 +122,34 @@ def _leader_fetch_usage(token: str, cfg: dict, n: int) -> dict:
     )
 
 
+def _limit_hit_detail(usage: dict, threshold: float) -> str:
+    parts: list[str] = []
+    total = float(usage.get("total_pct") or 0)
+    auto = float(usage.get("auto_pct") or 0)
+    api = float(usage.get("api_pct") or 0)
+    if total >= threshold:
+        parts.append(f"total={total:.1f}%")
+    if auto >= threshold:
+        parts.append(f"auto={auto:.1f}%")
+    if api >= threshold:
+        parts.append(f"api={api:.1f}%")
+    if str(usage.get("membership") or "").lower() == "free" and auto >= 50.0:
+        parts.append(f"free auto={auto:.1f}%")
+    return ", ".join(parts) if parts else f"total={total:.1f}%"
+
+
 def _leader_handle_over_threshold(
     instance_id: str, n: int, pool: KeyPool, cfg: dict, threshold: float, usage: dict
 ) -> None:
     if not still_leader(instance_id):
         print(f"#{n} 换号前失去 leader，立即停")
         return
-    set_action("switching", f"#{n} 超阈值 total={usage['total_pct']:.1f}% >= {threshold}%")
-    print(f"达到阈值 (total={usage['total_pct']:.1f}% >= {threshold}%)，自动换号...")
-    if not pull_until_acceptable_usage(pool, cfg, threshold, title_prefix=f"监测#{n}换号"):
+    detail = _limit_hit_detail(usage, threshold)
+    set_action("switching", f"#{n} 超阈值 {detail} >= {threshold}%")
+    print(f"达到阈值 ({detail} >= {threshold}%)，自动换号...")
+    if not pull_until_acceptable_usage(
+        pool, cfg, threshold, title_prefix=f"监测#{n}换号", instance_id=instance_id
+    ):
         print(f"#{n} 自动换号未获得可用额度，下轮重试")
         set_action("error", f"#{n} 换号未获可用额度", last_error="switch failed")
 
@@ -150,6 +171,21 @@ def _leader_ensure_token(
     return auth.access_token()
 
 
+def _leader_try_agent_switch(
+    instance_id: str, n: int, pool: KeyPool, cfg: dict, threshold: float
+) -> None:
+    if not agent_switch_requested():
+        return
+    set_action("switching", f"#{n} Agent 额度报错，立即换号…")
+    print(f"#{n} Agent 额度信号 → 立即换号…")
+    if pull_until_acceptable_usage(
+        pool, cfg, threshold, title_prefix=f"Agent信号#{n}换号", instance_id=instance_id
+    ):
+        clear_agent_switch_request()
+    else:
+        print(f"#{n} Agent 信号换号未获可用额度，下轮重试")
+
+
 def leader_tick(
     instance_id: str,
     n: int,
@@ -158,9 +194,11 @@ def leader_tick(
     pool: KeyPool,
     cfg: dict,
 ) -> None:
+    inst.heartbeat(instance_id)
     if not still_leader(instance_id):
         print(f"#{n} 已非 leader，跳过 auto tick")
         return
+    _leader_try_agent_switch(instance_id, n, pool, cfg, threshold)
     token = _leader_ensure_token(instance_id, n, interval, pool, cfg)
     if not token:
         return

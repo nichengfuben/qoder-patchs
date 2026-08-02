@@ -22,6 +22,16 @@ _SC_AUTOBOOT_PS1 = r"""$ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $sc = Join-Path $root "sc.cmd"
 if (-not (Test-Path -LiteralPath $sc)) { exit 0 }
+$pidFile = Join-Path $env:USERPROFILE ".cursor\sc_auto.pid"
+if (Test-Path -LiteralPath $pidFile) {
+  try {
+    $spid = [int](Get-Content -LiteralPath $pidFile -Raw).Trim()
+    if ($spid -gt 0) {
+      $p = Get-Process -Id $spid -ErrorAction SilentlyContinue
+      if ($null -ne $p) { exit 0 }
+    }
+  } catch {}
+}
 $inst = Join-Path $env:USERPROFILE ".cursor\sc_instances.json"
 if (Test-Path -LiteralPath $inst) {
   try {
@@ -37,12 +47,8 @@ if (Test-Path -LiteralPath $inst) {
     }
   } catch {}
 }
-$sl = Join-Path $root "sc-statusline.cmd"
-if (Test-Path -LiteralPath $sl) {
-  Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "echo {}| `"$sl`"") -WindowStyle Hidden -NoNewWindow | Out-Null
-}
-$argv = @("auto", "--fg")
-Start-Process -FilePath $sc -ArgumentList $argv -WindowStyle Hidden | Out-Null
+$argv = @("auto")
+Start-Process -FilePath $sc -ArgumentList $argv -WindowStyle Hidden -NoNewWindow | Out-Null
 """
 
 _AG_CMD = r"""@echo off
@@ -149,6 +155,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 SC="$ROOT/sc"
 [ -x "$SC" ] || exit 0
+PIDF="${HOME}/.cursor/sc_auto.pid"
+if [ -f "$PIDF" ]; then
+  SPID="$(tr -d ' \r\n' < "$PIDF" 2>/dev/null || true)"
+  if [ -n "$SPID" ] && kill -0 "$SPID" 2>/dev/null; then exit 0; fi
+fi
 INST="${HOME}/.cursor/sc_instances.json"
 if [ -f "$INST" ]; then
   HB="$(python3 -c "
@@ -170,9 +181,7 @@ except Exception:
     if [ "$AGE" -lt 10 ]; then exit 0; fi
   fi
 fi
-SL="$ROOT/sc-statusline"
-[ -x "$SL" ] && printf '{}\n' | "$SL" >/dev/null 2>&1 || true
-nohup "$SC" auto --fg >/dev/null 2>&1 &
+nohup "$SC" auto >/dev/null 2>&1 &
 """
 
 

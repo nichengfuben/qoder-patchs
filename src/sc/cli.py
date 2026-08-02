@@ -38,7 +38,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("command", nargs="?", default="help")
     p.add_argument("args", nargs="*")
-    p.add_argument("--fg", action="store_true", help="auto 前台运行")
+    p.add_argument("--fg", action="store_true", help="auto 前台 worker（supervisor 内部使用）")
+    p.add_argument("--supervise", action="store_true", help="auto 守护进程（崩溃自动重启）")
     p.add_argument("--parent", type=int, default=None, help="父进程 pid；退出后本实例自动下线")
     return p
 
@@ -46,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _print_help() -> None:
     print(
         "用法: sc <命令>\n"
-        "  auto / auto stop   保活；仅最晚 leader 跑 auto，丢 leader 立即停\n"
+        "  auto / auto stop   单 supervisor 守护；崩溃自动重启；不弹终端\n"
         "  status             配置/实例/用量\n"
         "  statusline         Agent statusLine\n"
         "  pull / usage       手动拉号 / 手动刷新用量（调试）\n"
@@ -86,7 +87,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if cmd == "auto":
         if ns.args and ns.args[0].lower() == "stop":
             return cmd_auto_stop()
-        return cmd_auto(foreground=bool(ns.fg), parent_pid=ns.parent)
+        return cmd_auto(
+            foreground=bool(ns.fg),
+            supervise=bool(ns.supervise),
+            parent_pid=ns.parent,
+        )
     print(f"未知命令: {cmd}；sc help")
     return 1
 
