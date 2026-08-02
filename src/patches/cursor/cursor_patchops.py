@@ -305,39 +305,50 @@ def assert_js_syntax(path: Path, source: str) -> None:
                 node_exe = cand
                 break
     tmp_path = None
-    checker_path = None
+    checker_paths: list[str] = []
+    checkers = (
+        (
+            "wrap",
+            "const fs=require('fs');const vm=require('vm');const Module=require('module');\n"
+            "try{new vm.Script(Module.wrap(fs.readFileSync(process.argv[2],'utf8')));}\n"
+            "catch(e){console.error(String(e&&e.message||e));process.exit(1)}\n",
+        ),
+        (
+            "bare",
+            "const fs=require('fs');const vm=require('vm');\n"
+            "try{new vm.Script(fs.readFileSync(process.argv[2],'utf8'));}\n"
+            "catch(e){console.error(String(e&&e.message||e));process.exit(1)}\n",
+        ),
+    )
     try:
         with tempfile.NamedTemporaryFile(
             "w", suffix=".js", delete=False, encoding="utf-8"
         ) as tmp:
             tmp.write(source)
             tmp_path = tmp.name
-        with tempfile.NamedTemporaryFile(
-            "w", suffix=".js", delete=False, encoding="utf-8"
-        ) as chk:
-            # Module.wrap 与 require() 同形；裸 vm.Script 会漏掉 CJS 下的真语法错误
-            chk.write(
-                "const fs=require('fs');const vm=require('vm');\n"
-                "const Module=require('module');\n"
-                "try{new vm.Script(Module.wrap(fs.readFileSync(process.argv[1],'utf8')));}\n"
-                "catch(e){console.error(String(e&&e.message||e));process.exit(1)}\n"
+        for mode, checker_src in checkers:
+            with tempfile.NamedTemporaryFile(
+                "w", suffix=".js", delete=False, encoding="utf-8"
+            ) as chk:
+                chk.write(checker_src)
+                checker_paths.append(chk.name)
+            proc = subprocess.run(
+                [str(node_exe), checker_paths[-1], tmp_path],
+                capture_output=True,
+                text=True,
+                timeout=60,
             )
-            checker_path = chk.name
-        proc = subprocess.run(
-            [str(node_exe), checker_path, tmp_path],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
+            if proc.returncode != 0:
+                err = (proc.stderr or proc.stdout or "").strip().splitlines()
+                msg = err[0] if err else "unknown syntax error"
+                raise RuntimeError(
+                    f"JS syntax check failed on {path.name} ({mode}): {msg}"
+                )
     finally:
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
-        if checker_path:
+        for checker_path in checker_paths:
             Path(checker_path).unlink(missing_ok=True)
-    if proc.returncode != 0:
-        err = (proc.stderr or proc.stdout or "").strip().splitlines()
-        msg = err[0] if err else "unknown syntax error"
-        raise RuntimeError(f"JS syntax check failed on {path.name}: {msg}")
 
 
 def patch_boot_cmd(root: Path, dry_run: bool) -> tuple[bool, Optional[Path], Optional[Path]]:

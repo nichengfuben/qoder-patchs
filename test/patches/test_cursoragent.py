@@ -81,7 +81,13 @@ def virgin_uichunk() -> str:
 
 def _virgin_replacements() -> list[tuple[str, str]]:
     """仅「上游原串 → 补丁」条目，排除已补丁中间态的升级路径。"""
-    return [(old, new) for old, new in _REPLACEMENTS if "agentcli-hot-auth" not in old]
+    return [
+        (old, new)
+        for old, new in _REPLACEMENTS
+        if "agentcli-hot-auth" not in old
+        and "_agentcli" not in old
+        and old != new
+    ]
 
 
 def test_fixture_files_exist() -> None:
@@ -119,6 +125,8 @@ def test_hot_auth_on_virgin_index_matches_expectations(virgin_index: str) -> Non
     assert "agentcli-hot-auth-wait" in out
     assert "agentcli-hot-auth-resume" in out
     assert "__agentcliRunSub=_sub" in out
+    assert "function _agentcliWaitAuthUpgrade(t)" in out
+    assert "_agentcliWaitAuthUpgrade(t);" in out
 
 
 def test_hot_auth_idempotent_on_virgin(virgin_index: str) -> None:

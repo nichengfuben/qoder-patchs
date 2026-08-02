@@ -3,10 +3,14 @@ from __future__ import annotations
 """Hot-auth JS replacement table."""
 
 from patches.cursor.cursor_chunks import (
-    _CATCH_UPGRADE_WAIT,
+    _AGENTCLI_WAIT_AUTH_FN,
+    _CATCH_UPGRADE_CALL,
+    _CATCH_UPGRADE_WAIT_INLINE,
     _DISK_BEARER_OVERRIDE,
     _DISK_BEARER_OVERRIDE_LEGACY_L,
     _DISK_BEARER_OVERRIDE_V1,
+    _QE_RESUME_PATCHED,
+    _QE_RESUME_VIRGIN,
     _QE_UPGRADE_RESUME,
 )
 
@@ -159,7 +163,7 @@ _REPLACEMENTS: tuple[tuple[str, str], ...] = (
         "setAuthentication(e,t,n){return o(this,void 0,void 0,(function*(){const r=yield this.readAuthData(),s={accessToken:e,refreshToken:t,apiKey:n,bedrockCredentials:null==r?void 0:r.bedrockCredentials};yield this.writeAuthData(s),this.cachedAccessToken=e,this.cachedRefreshToken=t,this.cachedApiKey=null!=n?n:null}))}",
         "setAuthentication(e,t,n){return o(this,void 0,void 0,(function*(){const r=yield this.readAuthData();"
         "/*agentcli-hot-auth*/try{const _d=null==r?void 0:r.accessToken;if(_d&&_d!==e){"
-        'const _a=JSON.parse(Buffer.from(String(_d).split(".")[1],"base64").toString()).sub,'
+        'const _a=JSON.parse(Buffer.from(String(_d).split(".")[1],"base64").toString()).sub;'
         'const _b=JSON.parse(Buffer.from(String(e).split(".")[1],"base64").toString()).sub;'
         "if(_a&&_b&&_a!==_b)return this.cachedAccessToken=_d,this.cachedRefreshToken=null==r?void 0:r.refreshToken,"
         "this.cachedApiKey=null==r?void 0:r.apiKey,void 0}}catch(_e){}"
@@ -167,13 +171,51 @@ _REPLACEMENTS: tuple[tuple[str, str], ...] = (
         "yield this.writeAuthData(s),this.cachedAccessToken=e,this.cachedRefreshToken=t,this.cachedApiKey=null!=n?n:null}))}",
     ),
     # 额度 ActionRequiredError(upgrade/payment)：auth.json 换号后内部 ResumeAction 重试，不发 UI「继续」
+    # 锚点含上文 return t}，避免二次 apply 时裸 function Qe 误匹配已注入区域
     (
-        ':d instanceof x||d instanceof R||d instanceof Q?{action:"throw",error:d}',
-        _QE_UPGRADE_RESUME,
+        "return t}"
+        + _AGENTCLI_WAIT_AUTH_FN
+        + "function Qe(e,t,n,r,s,i,o,a,l){",
+        "return t}"
+        + _AGENTCLI_WAIT_AUTH_FN
+        + "function Qe(e,t,n,r,s,i,o,a,l){",
+    ),
+    (
+        "return t}function Qe(e,t,n,r,s,i,o,a,l){",
+        "return t}"
+        + _AGENTCLI_WAIT_AUTH_FN
+        + "function Qe(e,t,n,r,s,i,o,a,l){",
+    ),
+    (
+        _QE_RESUME_PATCHED,
+        _QE_RESUME_PATCHED,
+    ),
+    (
+        _QE_RESUME_VIRGIN,
+        _QE_RESUME_PATCHED,
+    ),
+    (
+        "}catch(t){"
+        + _CATCH_UPGRADE_CALL
+        + "const n=null!==(_=null===(f=d.endlessRetries)||void 0===f?void 0:f.call(d))&&void 0!==_&&_,r=Re(t),s=Qe(t,",
+        "}catch(t){"
+        + _CATCH_UPGRADE_CALL
+        + "const n=null!==(_=null===(f=d.endlessRetries)||void 0===f?void 0:f.call(d))&&void 0!==_&&_,r=Re(t),s=Qe(t,",
     ),
     (
         "}catch(t){const n=null!==(_=null===(f=d.endlessRetries)||void 0===f?void 0:f.call(d))&&void 0!==_&&_,r=Re(t),s=Qe(t,",
-        "}catch(t){" + _CATCH_UPGRADE_WAIT + "const n=null!==(_=null===(f=d.endlessRetries)||void 0===f?void 0:f.call(d))&&void 0!==_&&_,r=Re(t),s=Qe(t,",
+        "}catch(t){"
+        + _CATCH_UPGRADE_CALL
+        + "const n=null!==(_=null===(f=d.endlessRetries)||void 0===f?void 0:f.call(d))&&void 0!==_&&_,r=Re(t),s=Qe(t,",
+    ),
+    # 升级：旧版 catch 内联 wait（语法错误）→ 函数调用
+    (
+        "}catch(t){"
+        + _CATCH_UPGRADE_WAIT_INLINE
+        + "const n=null!==(_=null===(f=d.endlessRetries)||void 0===f?void 0:f.call(d))&&void 0!==_&&_,r=Re(t),s=Qe(t,",
+        "}catch(t){"
+        + _CATCH_UPGRADE_CALL
+        + "const n=null!==(_=null===(f=d.endlessRetries)||void 0===f?void 0:f.call(d))&&void 0!==_&&_,r=Re(t),s=Qe(t,",
     ),
     # 升级 disk-override：记录本轮 Run 的 sub，供换号检测
     (

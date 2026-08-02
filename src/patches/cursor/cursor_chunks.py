@@ -255,8 +255,22 @@ _READ_AUTH_SUB_EXPR = (
     'return JSON.parse(Buffer.from(String(_tok).split(".")[1],"base64").toString()).sub||null'
     '}catch(_e){return null}})()'
 )
-# nal_agent_retries：额度 upgrade/payment 抛 ActionRequiredError 后等待 sc 写 auth.json，再内部 ResumeAction
-_CATCH_UPGRADE_WAIT = (
+# nal_agent_retries：额度 upgrade/payment 后等待 auth.json 换号（独立函数，避免 catch 内联破坏语法）
+_AGENTCLI_WAIT_AUTH_FN = (
+    'function _agentcliWaitAuthUpgrade(t){try{/*agentcli-hot-auth-wait*/'
+    'if(!(t instanceof R)||"upgrade"!==t.action&&"payment"!==t.action||t.agentcliAuthReady)return;'
+    + _AUTH_FS_BOOT
+    + _AUTH_DIR
+    + ';const _fail=globalThis.__agentcliRunSub;'
+    'for(let _i=0;_i<120&&!t.agentcliAuthReady;_i++){const _sub='
+    + _READ_AUTH_SUB_EXPR
+    + ';if(_sub&&_sub!==_fail){t.agentcliAuthReady=1;break}'
+    'if(_i<119){const _t0=Date.now();while(Date.now()-_t0<500);}}'
+    '}catch(_e){}}'
+)
+_CATCH_UPGRADE_CALL = "_agentcliWaitAuthUpgrade(t);"
+# 旧版内联 wait（会触发 Unexpected token 'catch'）→ 单行调用
+_CATCH_UPGRADE_WAIT_INLINE = (
     '/*agentcli-hot-auth-wait*/try{if(t instanceof R&&("upgrade"===t.action||"payment"===t.action)){'
     + _AUTH_FS_BOOT
     + _AUTH_DIR
@@ -275,6 +289,11 @@ _QE_UPGRADE_RESUME = (
     '?{action:"retry",countAsServerError:!0,countAsTransportError:!1}'
     ':d instanceof x||d instanceof R||d instanceof Q?{action:"throw",error:d}'
 )
+_QE_RESUME_THROW = (
+    ':d instanceof x||d instanceof R||d instanceof Q?{action:"throw",error:d}'
+)
+_QE_RESUME_VIRGIN = '{action:"throw",error:d}' + _QE_RESUME_THROW
+_QE_RESUME_PATCHED = '{action:"throw",error:d}' + _QE_UPGRADE_RESUME
 
 NUDGE_MARKER = "/*agentcli-sc-nudge*/"
 # 锚点落在「一条 const a=...,b=...,c=...」声明链内，只能插入合法 declarator，不能插分号
