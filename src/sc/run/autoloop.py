@@ -87,8 +87,7 @@ def apply_shared_usage(doc: dict) -> bool:
         return False
     if cur_leader:
         info = (doc.get("instances") or {}).get(cur_leader)
-        hb = float(info.get("heartbeat_at") or 0) if isinstance(info, dict) else 0.0
-        if inst._is_stale(hb):  # noqa: SLF001
+        if not isinstance(info, dict) or not inst._instance_active(info):  # noqa: SLF001
             return False
     cur = read_status()
     local = float(cur.get("usage_fetched_at") or 0)

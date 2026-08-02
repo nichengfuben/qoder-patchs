@@ -129,10 +129,15 @@ def _leader_fresh(doc: Dict[str, Any], *, now: float) -> bool:
     if not isinstance(info, dict):
         return False
     try:
-        hb = float(info.get("heartbeat_at") or 0)
+        from sc.run.instances import _instance_active
+
+        return _instance_active(info, now=now)
     except Exception:
-        return False
-    return hb > 0 and (now - hb) < _leader_ttl()
+        try:
+            hb = float(info.get("heartbeat_at") or 0)
+        except Exception:
+            return False
+        return hb > 0 and (now - hb) < _leader_ttl()
 
 
 def display_state() -> Dict[str, Any]:

@@ -50,19 +50,15 @@ setlocal EnableExtensions
 set "CURSOR_INVOKED_AS=%~nx0"
 set "SCRIPT_DIR=%~dp0"
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
-set "_PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
-set "_SCRIPT=%SCRIPT_DIR%\cursor-agent.ps1"
 REM agentcli-no-terminate-prompt
-endlocal & set "CURSOR_INVOKED_AS=%~nx0" & "%_PS%" -NoProfile -ExecutionPolicy Bypass -File "%_SCRIPT%" %*
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%\cursor-agent.ps1" %*
 """
 
 _CURSOR_AGENT_CMD_TAIL = r"""set "CURSOR_INVOKED_AS=%~nx0"
 set "SCRIPT_DIR=%~dp0"
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
-set "_PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
-set "_SCRIPT=%SCRIPT_DIR%\cursor-agent.ps1"
 REM agentcli-no-terminate-prompt
-endlocal & set "CURSOR_INVOKED_AS=%~nx0" & "%_PS%" -NoProfile -ExecutionPolicy Bypass -File "%_SCRIPT%" %*
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%\cursor-agent.ps1" %*
 """
 
 _SC_CMD = r"""@echo off
