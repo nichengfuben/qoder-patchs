@@ -23,16 +23,34 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $sc = Join-Path $root "sc.cmd"
 if (-not (Test-Path -LiteralPath $sc)) { exit 0 }
 $pidFile = Join-Path $env:USERPROFILE ".cursor\sc_auto.pid"
+$inst = Join-Path $env:USERPROFILE ".cursor\sc_instances.json"
 if (Test-Path -LiteralPath $pidFile) {
   try {
     $spid = [int](Get-Content -LiteralPath $pidFile -Raw).Trim()
     if ($spid -gt 0) {
       $p = Get-Process -Id $spid -ErrorAction SilentlyContinue
-      if ($null -ne $p) { exit 0 }
+      if ($null -ne $p) {
+        $aliveOk = $true
+        if (Test-Path -LiteralPath $inst) {
+          try {
+            $doc = Get-Content -LiteralPath $inst -Raw -Encoding UTF8 | ConvertFrom-Json
+            $lid = $doc.leader_id
+            if ($lid) {
+              $info = $doc.instances.$lid
+              if ($null -ne $info -and $null -ne $info.heartbeat_at) {
+                $hb = [double]$info.heartbeat_at
+                $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+                if (($now - $hb) -ge 120) { $aliveOk = $false }
+              }
+            }
+          } catch {}
+        }
+        if ($aliveOk) { exit 0 }
+        Stop-Process -Id $spid -Force -ErrorAction SilentlyContinue
+      }
     }
   } catch {}
 }
-$inst = Join-Path $env:USERPROFILE ".cursor\sc_instances.json"
 if (Test-Path -LiteralPath $inst) {
   try {
     $doc = Get-Content -LiteralPath $inst -Raw -Encoding UTF8 | ConvertFrom-Json

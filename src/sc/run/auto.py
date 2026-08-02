@@ -212,26 +212,95 @@ def _spawn_background_auto(parent_pid: Optional[int]) -> int:
 
 
 def ensure_auto_running(*, parent_pid: Optional[int] = None) -> bool:
-    """无 supervisor / leader 时拉起 sc auto（statusline / autoboot 共用）。"""
+    """无 supervisor / leader 时拉起 sc auto；挂死进程会被终止并重启。"""
+    return maybe_recover_auto(parent_pid=parent_pid)
+
+
+def maybe_recover_auto(*, parent_pid: Optional[int] = None) -> bool:
+    """STALE / 进程死亡 / 挂起时自动拉起 supervisor（30s cooldown）。"""
     if should_auto_stop():
-        return False
-    sup = read_auto_pid()
-    if sup and pid_alive(sup):
-        return False
-    if leader_active_peek():
         return False
     if _ensure_on_cooldown():
         return False
+
+    sup = read_auto_pid()
+    if sup and pid_alive(sup):
+        if leader_active_peek():
+            return False
+        print(f"sc auto: supervisor pid={sup} 无心跳，终止并重启", flush=True)
+        _terminate_pid(sup)
+        try:
+            pid_path().unlink(missing_ok=True)
+        except Exception:
+            pass
+    elif leader_active_peek():
+        return False
+
     clear_auto_stop()
     _spawn_background_auto(parent_pid)
     _touch_ensure_cooldown()
     return True
 
 
-def run_auto_supervisor(*, parent_pid: Optional[int] = None) -> int:
-    """守护进程：同进程跑 auto loop，异常退出后重启，不另开子终端。"""
-    from sc.run.autoloop import run_auto_foreground
+WORKER_START_GRACE_SEC = 30.0
+WATCH_POLL_SEC = 2.0
 
+
+def _worker_heartbeat_stale(worker_pid: int) -> bool:
+    doc = peek_instances()
+    lid = doc.get("leader_id")
+    if not lid:
+        return False
+    info = (doc.get("instances") or {}).get(lid)
+    if not isinstance(info, dict):
+        return False
+    if int(info.get("pid") or 0) != worker_pid:
+        return False
+    hb = float(info.get("heartbeat_at") or 0)
+    if hb <= 0:
+        return True
+    return (time.time() - hb) >= inst.STALE_GRACE_SEC
+
+
+def _spawn_foreground_worker(log_f) -> subprocess.Popen:
+    args = [sys.executable, "-X", "utf8", "-m", "sc", "auto", "--fg"]
+    kwargs: dict = {
+        "args": args,
+        "stdout": log_f,
+        "stderr": log_f,
+        "env": utf8_env(),
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    return subprocess.Popen(**kwargs)
+
+
+def _supervise_worker(proc: subprocess.Popen, *, started_at: float) -> int:
+    while proc.poll() is None:
+        if should_auto_stop():
+            proc.terminate()
+            break
+        if (
+            time.time() - started_at >= WORKER_START_GRACE_SEC
+            and _worker_heartbeat_stale(proc.pid)
+        ):
+            print(f"supervisor: worker pid={proc.pid} 心跳超时，终止", flush=True)
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                proc.kill()
+            break
+        time.sleep(WATCH_POLL_SEC)
+    try:
+        return int(proc.wait(timeout=1))
+    except Exception:
+        proc.kill()
+        return int(proc.wait())
+
+
+def run_auto_supervisor(*, parent_pid: Optional[int] = None) -> int:
+    """守护进程：worker 子进程 + 心跳看门狗，挂死可杀后重启。"""
     clear_auto_stop()
     prev = read_auto_pid()
     if prev and prev != os.getpid() and pid_alive(prev):
@@ -239,22 +308,26 @@ def run_auto_supervisor(*, parent_pid: Optional[int] = None) -> int:
     write_pid()
     log_path = sc_home_dir() / "sc_auto.log"
     print(f"supervisor 启动 pid={os.getpid()} log={log_path}", flush=True)
-    while not should_auto_stop():
-        if parent_pid and not pid_alive(parent_pid):
-            print("supervisor: parent 已退出，停止", flush=True)
-            break
-        try:
-            code = run_auto_foreground(parent_pid=parent_pid)
-        except Exception as exc:
-            print(f"supervisor: worker 异常: {type(exc).__name__}: {exc}", flush=True)
-            code = 1
-        if should_auto_stop():
-            break
-        print(
-            f"supervisor: worker 退出 code={code}，{SUPERVISOR_RESTART_SEC}s 后重启",
-            flush=True,
-        )
-        time.sleep(SUPERVISOR_RESTART_SEC)
+    with open(log_path, "a", encoding="utf-8") as log_f:
+        while not should_auto_stop():
+            if parent_pid and not pid_alive(parent_pid):
+                print("supervisor: parent 已退出，停止", flush=True)
+                break
+            started = time.time()
+            try:
+                proc = _spawn_foreground_worker(log_f)
+            except Exception as exc:
+                print(f"supervisor: 启动 worker 失败: {exc}", flush=True)
+                time.sleep(SUPERVISOR_RESTART_SEC)
+                continue
+            code = _supervise_worker(proc, started_at=started)
+            if should_auto_stop():
+                break
+            print(
+                f"supervisor: worker 退出 code={code}，{SUPERVISOR_RESTART_SEC}s 后重启",
+                flush=True,
+            )
+            time.sleep(SUPERVISOR_RESTART_SEC)
     try:
         if read_auto_pid() == os.getpid():
             pid_path().unlink(missing_ok=True)
@@ -275,10 +348,47 @@ def cmd_auto(
     if foreground:
         from sc.run.autoloop import run_auto_foreground
 
-        return run_auto_foreground(parent_pid=parent_pid)
+        return run_auto_foreground(parent_pid=parent_pid, fg_worker=True)
     sup = read_auto_pid()
     if sup and pid_alive(sup):
         print(f"supervisor 已在运行 pid={sup}")
         return 0
     clear_auto_stop()
     return _spawn_background_auto(parent_pid)
+
+
+def fetch_usage_parsed(token: str, *, timeout: float, instance_id: str) -> dict:
+    """查用量并在阻塞期间持续 heartbeat，避免 statusline STALE。"""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
+    from contextlib import contextmanager
+    from typing import Iterator
+
+    from sc.core import api
+
+    @contextmanager
+    def _heartbeat_while() -> Iterator[None]:
+        stop = threading.Event()
+
+        def _loop() -> None:
+            while not stop.wait(2.0):
+                try:
+                    inst.heartbeat(instance_id)
+                except Exception:
+                    pass
+
+        thread = threading.Thread(target=_loop, daemon=True)
+        thread.start()
+        try:
+            yield
+        finally:
+            stop.set()
+
+    with _heartbeat_while():
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            fut = pool.submit(api.fetch_usage, token, timeout=timeout)
+            try:
+                raw = fut.result(timeout=timeout + 10.0)
+            except FutTimeout:
+                raise RuntimeError("超时") from None
+    return api.parse_usage(raw)

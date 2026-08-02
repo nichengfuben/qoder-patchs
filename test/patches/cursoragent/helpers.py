@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from patches.cursor.cursor_hotauth import _COMPILE_CACHE_OLD
+from patches.cursor.cursor_hotauth import BEARER_REPLACEMENTS
 from patches.cursor.cursor_repls import _REPLACEMENTS
 from patches.cursor.cursor_chunks import (
     _FOOTER_KEEP_OLD,
@@ -47,13 +48,19 @@ def load_virgin_uichunk() -> str:
 
 
 def virgin_replacements() -> list[tuple[str, str]]:
-    return [
+    pairs = [
         (old, new)
         for old, new in _REPLACEMENTS
         if "agentcli-hot-auth" not in old
         and "_agentcli" not in old
         and old != new
     ]
+    pairs.extend(
+        (old, new)
+        for old, new in BEARER_REPLACEMENTS
+        if "agentcli-hot-auth" not in old and old != new
+    )
+    return pairs
 
 
 def build_temp_virgin_bundle(

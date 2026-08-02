@@ -55,7 +55,28 @@ def test_ensure_spawns_when_no_leader(tmp_path, monkeypatch) -> None:
         return 0
 
     monkeypatch.setattr(auto_mod, "_spawn_background_auto", _fake_spawn)
-    assert auto_mod.ensure_auto_running() is True
+    assert auto_mod.maybe_recover_auto() is True
+    assert spawned == [1]
+
+
+def test_recover_kills_hung_supervisor(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(auto_mod, "sc_home_dir", lambda: tmp_path)
+    monkeypatch.setattr(auto_mod, "migrate_legacy_sc_home", lambda: None)
+    monkeypatch.setattr(auto_mod, "should_auto_stop", lambda: False)
+    monkeypatch.setattr(auto_mod, "_ensure_on_cooldown", lambda: False)
+    monkeypatch.setattr(auto_mod, "read_auto_pid", lambda: 9999)
+    monkeypatch.setattr(auto_mod, "pid_alive", lambda _p: True)
+    monkeypatch.setattr(auto_mod, "leader_active_peek", lambda **_: False)
+    killed: list[int] = []
+    spawned: list[int] = []
+
+    def _kill(pid):
+        killed.append(pid)
+
+    monkeypatch.setattr(auto_mod, "_terminate_pid", _kill)
+    monkeypatch.setattr(auto_mod, "_spawn_background_auto", lambda _p: spawned.append(1) or 0)
+    assert auto_mod.maybe_recover_auto() is True
+    assert killed == [9999]
     assert spawned == [1]
 
 

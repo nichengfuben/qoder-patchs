@@ -211,6 +211,15 @@ def display_state() -> Dict[str, Any]:
     if hb > 0:
         st["leader_heartbeat_at"] = hb
     st["_stale"] = (not leader_ok) or age > stale_after
+    if st["_stale"] and not leader_ok:
+        try:
+            from sc.run.auto import pid_alive, read_auto_pid
+
+            sup = read_auto_pid()
+            if not sup or not pid_alive(sup):
+                st["message"] = "sc auto 已停止，正在自动重启…"
+        except Exception:
+            pass
     if not st.get("action") or st.get("action") == "idle":
         if leader_ok:
             st["action"] = "polling"

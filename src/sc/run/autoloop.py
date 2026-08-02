@@ -11,6 +11,7 @@ from sc.core.config import load_config
 from sc.core.keys import KeyPool
 from sc.run import instances as inst
 from sc.run.auto import (
+    fetch_usage_parsed,
     kill_legacy_exclusive_auto,
     pid_alive,
     pid_path,
@@ -117,9 +118,11 @@ def apply_shared_usage(doc: dict) -> bool:
     return True
 
 
-def _leader_fetch_usage(token: str, cfg: dict, n: int) -> dict:
-    return api.parse_usage(
-        api.fetch_usage(token, timeout=float(cfg.get("request_timeout") or 20))
+def _leader_fetch_usage(token: str, cfg: dict, instance_id: str) -> dict:
+    return fetch_usage_parsed(
+        token,
+        timeout=float(cfg.get("request_timeout") or 20),
+        instance_id=instance_id,
     )
 
 
@@ -197,7 +200,7 @@ def leader_tick(
             print(f"#{n} 查询前失去 leader，立即停")
             return
         print(f"#{n} 查询用量...")
-        usage = _leader_fetch_usage(token, cfg, n)
+        usage = _leader_fetch_usage(token, cfg, instance_id)
         if not still_leader(instance_id):
             print(f"#{n} 查询后失去 leader，丢弃结果并立即停")
             return
@@ -343,14 +346,15 @@ def _auto_cleanup(iid: str) -> None:
         pass
 
 
-def run_auto_foreground(*, parent_pid: Optional[int] = None) -> int:
+def run_auto_foreground(*, parent_pid: Optional[int] = None, fg_worker: bool = False) -> int:
     kill_legacy_exclusive_auto()
     cfg = load_config()
     interval = max(1, int(cfg.get("poll_interval") or 5))
     threshold = usage_threshold(cfg)
     pool = make_pool(cfg)
     iid = inst.register_instance(parent_pid=parent_pid)
-    write_pid()
+    if not fg_worker:
+        write_pid()
     snapshot_account()
     write_status(poll_interval=interval, usage_threshold=threshold, poll_n=0, instance_id=iid)
     print(

@@ -22,6 +22,7 @@ from patches.cursor.cursor_agent import (
     apply_hot_auth_replacements,
     find_client_config,
 )
+from patches.cursor.cursor_hotauth import _ACTION_REQUIRED_NEW
 from patches.cursor.cursor_chunks import (
     _FOOTER_KEEP_NEW,
     _FOOTER_KEEP_OLD,
@@ -90,6 +91,8 @@ def test_hot_auth_on_virgin_index_matches_expectations(virgin_index: str) -> Non
     assert "_tok!==_failTok" in out
     assert "__agentcliAuthSwitched=1" in out
     assert 'if(C){_agentcliWaitAuthUpgrade({action:"upgrade"})' in out
+    assert _ACTION_REQUIRED_NEW in out
+    assert "/usage limit|free requests/i.test(_ti)" in out
 
 
 def test_hot_auth_idempotent_on_virgin(virgin_index: str) -> None:

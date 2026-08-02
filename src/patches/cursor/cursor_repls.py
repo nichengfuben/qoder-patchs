@@ -347,51 +347,5 @@ _REPLACEMENTS: tuple[tuple[str, str], ...] = (
         + _DISK_BEARER_OVERRIDE
         + 'null!=_agentcliBearer&&s.header.set("authorization",`Bearer ${_agentcliBearer}`);',
     ),
-    # local-worker / indexing：se(credentialManager) 路径同样强制读盘
-    (
-        'function se(e){return t=>n=>ne(this,void 0,void 0,(function*(){const r=yield e.getAccessToken();if(!r)throw new Error("No access token found");n.header.set("authorization",`Bearer ${r}`);',
-        'function se(e){return t=>n=>ne(this,void 0,void 0,(function*(){var r=yield e.getAccessToken();'
-        '/*agentcli-hot-auth*/try{const _fs=(process.getBuiltinModule&&(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||require("node:fs"),'
-        '_path=(process.getBuiltinModule&&(process.getBuiltinModule("node:path")||process.getBuiltinModule("path")))||require("node:path"),'
-        '_os=(process.getBuiltinModule&&(process.getBuiltinModule("node:os")||process.getBuiltinModule("os")))||require("node:os");'
-        'const _dir="win32"===process.platform?_path.join(process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor"):_path.join(_os.homedir(),".cursor");'
-        'const _j=JSON.parse(_fs.readFileSync(_path.join(_dir,"auth.json"),"utf8"));if(_j&&_j.accessToken)r=_j.accessToken;'
-        '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),JSON.stringify({sub:JSON.parse(Buffer.from(String(r).split(".")[1],"base64").toString()).sub,ts:Date.now(),pid:process.pid,via:"se"}))}catch(_e){}'
-        'if(!r)throw new Error("No access token found");n.header.set("authorization",`Bearer ${r}`);',
-    ),
-    # telemetry / privacy / getMe 拦截器：credentialManager.getAccessToken 后同样强制读盘
-    (
-        'const r=yield e.credentialManager.getAccessToken();return r&&n.header.set("authorization",`Bearer ${r}`),t(n)',
-        'var r=yield e.credentialManager.getAccessToken();'
-        '/*agentcli-hot-auth*/try{const _fs=(process.getBuiltinModule&&(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||require("node:fs"),'
-        '_path=(process.getBuiltinModule&&(process.getBuiltinModule("node:path")||process.getBuiltinModule("path")))||require("node:path"),'
-        '_os=(process.getBuiltinModule&&(process.getBuiltinModule("node:os")||process.getBuiltinModule("os")))||require("node:os");'
-        'const _dir="win32"===process.platform?_path.join(process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor"):_path.join(_os.homedir(),".cursor");'
-        'const _j=JSON.parse(_fs.readFileSync(_path.join(_dir,"auth.json"),"utf8"));if(_j&&_j.accessToken)r=_j.accessToken;'
-        '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),JSON.stringify({sub:JSON.parse(Buffer.from(String(r).split(".")[1],"base64").toString()).sub,ts:Date.now(),pid:process.pid,via:"cm-t"}))}catch(_e){}'
-        'return r&&n.header.set("authorization",`Bearer ${r}`),t(n)',
-    ),
-    (
-        'const s=yield e.credentialManager.getAccessToken();return s&&n.header.set("authorization",`Bearer ${s}`),(0,r._5)(n.header),t(n)',
-        'var s=yield e.credentialManager.getAccessToken();'
-        '/*agentcli-hot-auth*/try{const _fs=(process.getBuiltinModule&&(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||require("node:fs"),'
-        '_path=(process.getBuiltinModule&&(process.getBuiltinModule("node:path")||process.getBuiltinModule("path")))||require("node:path"),'
-        '_os=(process.getBuiltinModule&&(process.getBuiltinModule("node:os")||process.getBuiltinModule("os")))||require("node:os");'
-        'const _dir="win32"===process.platform?_path.join(process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor"):_path.join(_os.homedir(),".cursor");'
-        'const _j=JSON.parse(_fs.readFileSync(_path.join(_dir,"auth.json"),"utf8"));if(_j&&_j.accessToken)s=_j.accessToken;'
-        '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),JSON.stringify({sub:JSON.parse(Buffer.from(String(s).split(".")[1],"base64").toString()).sub,ts:Date.now(),pid:process.pid,via:"cm-s"}))}catch(_e){}'
-        'return s&&n.header.set("authorization",`Bearer ${s}`),(0,r._5)(n.header),t(n)',
-    ),
-    (
-        'const r=yield e.credentialManager.getAccessToken();return r&&n.header.set("authorization",`Bearer ${r}`),o(n.header),t(n)',
-        'var r=yield e.credentialManager.getAccessToken();'
-        '/*agentcli-hot-auth*/try{const _fs=(process.getBuiltinModule&&(process.getBuiltinModule("node:fs")||process.getBuiltinModule("fs")))||require("node:fs"),'
-        '_path=(process.getBuiltinModule&&(process.getBuiltinModule("node:path")||process.getBuiltinModule("path")))||require("node:path"),'
-        '_os=(process.getBuiltinModule&&(process.getBuiltinModule("node:os")||process.getBuiltinModule("os")))||require("node:os");'
-        'const _dir="win32"===process.platform?_path.join(process.env.APPDATA||_path.join(_os.homedir(),"AppData","Roaming"),"Cursor"):_path.join(_os.homedir(),".cursor");'
-        'const _j=JSON.parse(_fs.readFileSync(_path.join(_dir,"auth.json"),"utf8"));if(_j&&_j.accessToken)r=_j.accessToken;'
-        '_fs.writeFileSync(_path.join(_dir,"agentcli-last-bearer.json"),JSON.stringify({sub:JSON.parse(Buffer.from(String(r).split(".")[1],"base64").toString()).sub,ts:Date.now(),pid:process.pid,via:"cm-o"}))}catch(_e){}'
-        'return r&&n.header.set("authorization",`Bearer ${r}`),o(n.header),t(n)',
-    ),
 )
 

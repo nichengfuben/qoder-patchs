@@ -274,11 +274,21 @@ _AGENTCLI_WAIT_AUTH_FN_V1 = (
     'if(_i<119){const _t0=Date.now();while(Date.now()-_t0<500);}}'
     '}catch(_e){}}'
 )
+_AGENTCLI_UPGRADE_GUARD_V3 = (
+    'var _up=t instanceof R&&("upgrade"===t.action||"payment"===t.action)||'
+    't&&("upgrade"===t.action||"payment"===t.action);'
+    'if(!_up){try{var _ec=t&&t.displayInfo&&t.displayInfo.errorDetails&&t.displayInfo.errorDetails.error;'
+    '_up=7===_ec||8===_ec||9===_ec||10===_ec}catch(_e){}}'
+    'if(!_up||t.agentcliAuthReady)return;'
+)
 _AGENTCLI_UPGRADE_GUARD = (
     'var _up=t instanceof R&&("upgrade"===t.action||"payment"===t.action)||'
     't&&("upgrade"===t.action||"payment"===t.action);'
     'if(!_up){try{var _ec=t&&t.displayInfo&&t.displayInfo.errorDetails&&t.displayInfo.errorDetails.error;'
     '_up=7===_ec||8===_ec||9===_ec||10===_ec}catch(_e){}}'
+    'if(!_up){try{var _ti=(t&&t.displayInfo&&t.displayInfo.title||"")+" "+'
+    '(t&&t.displayInfo&&t.displayInfo.detail||"");'
+    '_up=/usage limit|free requests/i.test(_ti)}catch(_e){}}'
     'if(!_up||t.agentcliAuthReady)return;'
 )
 _AGENTCLI_WAIT_AUTH_FN_V2 = (

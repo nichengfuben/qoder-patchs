@@ -260,6 +260,14 @@ def _read_stdin_width() -> int:
 def run() -> int:
     width = _read_stdin_width()
     st = display_state()
+    if st.get("_stale"):
+        try:
+            from sc.run.auto import maybe_recover_auto
+
+            if maybe_recover_auto():
+                st = display_state()
+        except Exception:
+            pass
     if not st:
         st = {"action": "idle", "message": "尚未运行 sc auto", "_stale": True}
     for line in format_status_lines(st, width=width):
