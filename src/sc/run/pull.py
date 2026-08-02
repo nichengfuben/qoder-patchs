@@ -166,8 +166,7 @@ def ensure_usable_key(pool: KeyPool, cfg: dict) -> Optional[KeyState]:
             refresh_key_state(pool, s, cfg)
         if pool.should_switch(s):
             print(
-                f"Key[{s.masked()}] daily_used={s.daily_used} "
-                f">= 阈值 {pool.threshold}，切换..."
+                f"Key[{s.masked()}] {pool.switch_reason(s)}，切换..."
             )
             pool.switch_next()
             continue
@@ -317,6 +316,14 @@ def _check_usage_ok(
         set_action("ok", f"pull 已写入，用量校验失败: {hint}")
         # auth 已换新；末次校验失败仍视为成功，由 Agent 内部 ResumeAction 续跑
         return attempt >= attempts
+
+
+def switch_fail_reason(pool: KeyPool) -> str:
+    keys = pool.all()
+    if not keys:
+        return "no api key"
+    parts = [f"{s.masked()}:{pool.switch_reason(s)}" for s in keys]
+    return "; ".join(parts) if parts else "key exhausted"
 
 
 def pull_until_acceptable_usage(

@@ -26,6 +26,7 @@ from sc.run.pull import (
     pull_until_acceptable_usage,
     snapshot_account,
     snapshot_usage,
+    switch_fail_reason,
     usage_threshold,
 )
 from sc.run.status_store import read_status, set_action, write_status
@@ -122,36 +123,25 @@ def _leader_fetch_usage(token: str, cfg: dict, n: int) -> dict:
     )
 
 
-def _limit_hit_detail(usage: dict, threshold: float) -> str:
-    parts: list[str] = []
-    total = float(usage.get("total_pct") or 0)
-    auto = float(usage.get("auto_pct") or 0)
-    api = float(usage.get("api_pct") or 0)
-    if total >= threshold:
-        parts.append(f"total={total:.1f}%")
-    if auto >= threshold:
-        parts.append(f"auto={auto:.1f}%")
-    if api >= threshold:
-        parts.append(f"api={api:.1f}%")
-    if str(usage.get("membership") or "").lower() == "free" and auto >= 50.0:
-        parts.append(f"free auto={auto:.1f}%")
-    return ", ".join(parts) if parts else f"total={total:.1f}%"
-
-
 def _leader_handle_over_threshold(
     instance_id: str, n: int, pool: KeyPool, cfg: dict, threshold: float, usage: dict
 ) -> None:
     if not still_leader(instance_id):
         print(f"#{n} 换号前失去 leader，立即停")
         return
-    detail = _limit_hit_detail(usage, threshold)
+    detail = api.limit_hit_detail(usage, threshold)
     set_action("switching", f"#{n} 超阈值 {detail} >= {threshold}%")
     print(f"达到阈值 ({detail} >= {threshold}%)，自动换号...")
     if not pull_until_acceptable_usage(
         pool, cfg, threshold, title_prefix=f"监测#{n}换号", instance_id=instance_id
     ):
         print(f"#{n} 自动换号未获得可用额度，下轮重试")
-        set_action("error", f"#{n} 换号未获可用额度", last_error="switch failed")
+        reason = switch_fail_reason(pool)
+        set_action(
+            "switching",
+            f"#{n} 换号失败({reason})，下轮重试",
+            last_error=reason,
+        )
 
 
 def _leader_ensure_token(

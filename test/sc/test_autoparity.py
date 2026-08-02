@@ -60,23 +60,21 @@ def test_parse_usage_ignores_api_total_percent_used() -> None:
     assert u["total_pct"] == 50.0
 
 
-def test_is_limit_reached_uses_usage_threshold() -> None:
+def test_is_limit_reached_uses_total_only() -> None:
     assert is_limit_reached({"total_pct": 95.0, "is_unlimited": False}, 95.0)
     assert not is_limit_reached({"total_pct": 94.9, "is_unlimited": False}, 95.0)
     assert not is_limit_reached({"total_pct": 100.0, "is_unlimited": True}, 95.0)
-
-
-def test_is_limit_reached_auto_api_individual() -> None:
-    usage = {"total_pct": 50.0, "auto_pct": 100.0, "api_pct": 0.0, "is_unlimited": False}
-    assert is_limit_reached(usage, 90.0)
+    # 仅 auto 高、total=(auto+api)/2 未达阈值 → 不换号
     assert not is_limit_reached(
-        {"total_pct": 25.0, "auto_pct": 40.0, "api_pct": 10.0, "is_unlimited": False}, 90.0
+        {"total_pct": 50.0, "auto_pct": 100.0, "api_pct": 0.0, "is_unlimited": False},
+        90.0,
     )
-
-
-def test_is_limit_reached_free_auto_half() -> None:
     assert is_limit_reached(
-        {"total_pct": 25.0, "auto_pct": 50.0, "api_pct": 0.0, "membership": "free", "is_unlimited": False},
+        {"total_pct": 43.5, "auto_pct": 87.0, "api_pct": 0.0, "membership": "free", "is_unlimited": False},
+        90.0,
+    ) is False
+    assert is_limit_reached(
+        {"auto_pct": 87.0, "api_pct": 93.0, "is_unlimited": False},
         90.0,
     )
 

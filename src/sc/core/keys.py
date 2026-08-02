@@ -64,5 +64,18 @@ class KeyPool:
             return True
         return s.daily_used >= self.threshold
 
+    def switch_reason(self, s: KeyState) -> str:
+        if not s.is_active:
+            return "已禁用"
+        if (
+            s.daily_limit is not None
+            and s.daily_used is not None
+            and s.daily_used >= s.daily_limit
+        ):
+            return f"日额度 {s.daily_used}/{s.daily_limit}"
+        if s.daily_used is not None and s.daily_used >= self.threshold:
+            return f"日用量>={self.threshold}"
+        return "不可用"
+
     def to_key_list(self) -> List[str]:
         return [s.key for s in self._states]
